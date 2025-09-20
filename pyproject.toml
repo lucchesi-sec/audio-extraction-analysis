@@ -1,0 +1,99 @@
+[project]
+name = "audio-extraction-analysis"
+version = "1.0.0+emergency"
+description = "Audio extraction and transcription analysis tool with multiple providers (Deepgram, ElevenLabs)"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "deepgram-sdk>=4.8.1,<5.0.0",
+    "elevenlabs>=1.0.0,<2.0.0",
+    "python-dotenv>=1.0.0,<2.0.0",
+    "rich>=13.0.0",
+    "pydantic>=2.4,<3",
+    "networkx>=3.1,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "black>=23.0.0",
+    "ruff>=0.4.0",
+    "pre-commit>=3.0.0",
+    "bandit>=1.7.6",
+    "pip-audit>=2.4.14",
+]
+
+parakeet = [
+    "nemo-toolkit[asr]>=1.20.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "tensorboard>=2.14.0",
+    "hydra-core>=1.3.0",
+    "omegaconf>=2.3.0",
+    "pytorch-lightning>=2.0.0",
+    "webdataset>=0.2.48",
+    "librosa>=0.10.0",
+    "soundfile>=0.12.1",
+]
+
+yaml = [
+    "PyYAML>=6.0",
+]
+
+redis = [
+    "redis>=5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/lucchesi-sec/audio-extraction-analysis"
+Repository = "https://github.com/lucchesi-sec/audio-extraction-analysis.git"
+Documentation = "https://github.com/lucchesi-sec/audio-extraction-analysis#readme"
+"Bug Tracker" = "https://github.com/lucchesi-sec/audio-extraction-analysis/issues"
+
+[project.scripts]
+audio-extraction-analysis = "src.cli:main"
+audio-extraction = "src.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.black]
+line-length = 100
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E","F","I","UP","N","B","S","RUF"]
+ignore = [
+  "S101",  # asserts allowed in tests
+]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "strict"
