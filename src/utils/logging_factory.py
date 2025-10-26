@@ -82,30 +82,33 @@ class LoggingFactory:
             - Sets specific levels for 'transcription' and 'audio_extraction' loggers
             - Sets _initialized flag to prevent re-initialization
         """
+        # Skip initialization if already done (singleton pattern enforcement)
         if cls._initialized:
             return
 
+        # Use provided log directory or keep default
         if log_dir:
             cls._log_dir = log_dir
 
-        # Create log directory if it doesn't exist
+        # Create log directory structure if it doesn't exist
         cls._log_dir.mkdir(parents=True, exist_ok=True)
 
-        # Default format
+        # Use default format if custom format not provided
         if format_string is None:
             format_string = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-        # Configure root logger
+        # Configure root logger with file and console output
         logging.basicConfig(
             level=level,
             format=format_string,
             handlers=[logging.FileHandler(cls._log_dir / "app.log"), logging.StreamHandler()],
         )
 
-        # Set specific module levels
+        # Set component-specific logging levels for fine-grained control
         logging.getLogger("transcription").setLevel(logging.DEBUG)
         logging.getLogger("audio_extraction").setLevel(logging.INFO)
 
+        # Mark as initialized to prevent duplicate configuration
         cls._initialized = True
 
     @classmethod
@@ -141,9 +144,24 @@ class LoggingFactory:
     def set_level(cls, name: str, level: int) -> None:
         """Set the logging level for a specific logger.
 
+        This can be called at any time to dynamically adjust logging verbosity
+        for individual loggers without affecting others. Useful for debugging
+        specific components.
+
         Args:
-            name: Logger name
-            level: Logging level (e.g., logging.DEBUG, logging.INFO)
+            name: Logger name to configure. Should match a logger name used
+                  in get_logger() calls (e.g., 'transcription', 'audio_extraction',
+                  or a module name like 'src.processors.audio').
+            level: Logging level to set. Valid values:
+                   - logging.DEBUG (10): Detailed diagnostic information
+                   - logging.INFO (20): General informational messages
+                   - logging.WARNING (30): Warning messages
+                   - logging.ERROR (40): Error messages
+                   - logging.CRITICAL (50): Critical errors
+
+        Example:
+            # Enable debug logging for transcription component only
+            LoggingFactory.set_level('transcription', logging.DEBUG)
         """
         logging.getLogger(name).setLevel(level)
 
@@ -151,14 +169,32 @@ class LoggingFactory:
     def configure_verbose(cls, verbose: bool = False) -> None:
         """Configure verbosity for all loggers.
 
+        This is a convenience method for quickly switching between normal and
+        verbose logging modes across the entire application. It affects:
+        - Root logger
+        - 'src' logger (application code)
+        - 'transcription' logger
+        - 'audio_extraction' logger
+
         Args:
-            verbose: If True, set to DEBUG level; otherwise INFO
+            verbose: If True, sets all affected loggers to DEBUG level for
+                    detailed diagnostic output. If False, sets to INFO level
+                    for normal operation (default: False).
+
+        Example:
+            # Enable verbose mode for debugging
+            LoggingFactory.configure_verbose(verbose=True)
+
+            # Return to normal logging
+            LoggingFactory.configure_verbose(verbose=False)
         """
         level = logging.DEBUG if verbose else logging.INFO
+
+        # Configure root and application loggers
         logging.getLogger().setLevel(level)
         logging.getLogger("src").setLevel(level)
 
-        # Update specific loggers based on verbosity
+        # Update component-specific loggers based on verbosity
         if verbose:
             logging.getLogger("transcription").setLevel(logging.DEBUG)
             logging.getLogger("audio_extraction").setLevel(logging.DEBUG)
@@ -167,16 +203,30 @@ class LoggingFactory:
             logging.getLogger("audio_extraction").setLevel(logging.INFO)
 
 
-# Convenience function for backward compatibility
+# Convenience function for backward compatibility and simpler imports
 def get_logger(name: str) -> logging.Logger:
     """Get a configured logger for the given module name.
 
-    This function maintains backward compatibility with the old logging_config module.
+    This is a convenience function that provides a simpler import path and
+    maintains backward compatibility with the old logging_config module.
+    It delegates to LoggingFactory.get_logger() internally.
+
+    Usage Choice:
+        - Use this function for cleaner imports: `from utils.logging_factory import get_logger`
+        - Use LoggingFactory.get_logger() when you need other factory methods too
+
+    Both approaches are functionally identical and support auto-initialization.
 
     Args:
-        name: Module name for the logger
+        name: Module name for the logger. Typically __name__ for automatic
+              module identification.
 
     Returns:
-        Configured logger instance
+        Configured logger instance ready for use.
+
+    Example:
+        from utils.logging_factory import get_logger
+        logger = get_logger(__name__)
+        logger.info("Application started")
     """
     return LoggingFactory.get_logger(name)

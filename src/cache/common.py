@@ -1,11 +1,18 @@
 """
 Common cache utilities and protocols.
 
-This module contains shared functionality for cache backends including:
-- Serialization/deserialization helpers
-- TTL and size management utilities
-- Key normalization functions
-- Cache operation contracts
+This module provides shared functionality for cache backend implementations,
+including abstract protocols, serialization helpers, and management utilities.
+
+Components:
+    - BaseCache: Protocol defining the standard cache backend interface
+    - CacheUtils: Static utility methods for cache key normalization and sizing
+    - SerializationHelper: JSON-based serialization with optional compression
+    - TTLManager: Time-to-live expiration management utilities
+    - SizeLimitManager: Cache size tracking and limit enforcement
+
+All cache backends should implement the BaseCache protocol to ensure
+consistency across different storage mechanisms (memory, Redis, disk, etc.).
 """
 
 from __future__ import annotations
@@ -24,32 +31,41 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class BaseCache(Protocol):
-    """Protocol defining the cache backend interface.
-    
-    All cache backends should implement this protocol to ensure consistency
-    and enable contract testing.
+    """Protocol defining the standard cache backend interface.
+
+    This protocol establishes a contract that all cache backends must follow,
+    enabling polymorphic usage and contract-based testing. Implementations
+    should handle serialization, TTL expiration, and size management internally.
+
+    Note:
+        Implementations should be thread-safe if used in concurrent contexts.
+        All methods should handle errors gracefully and return appropriate
+        success/failure indicators rather than raising exceptions.
     """
     
     def get(self, key: str) -> Optional[CacheEntry]:
-        """Get entry from cache.
-        
+        """Retrieve a cache entry by key.
+
         Args:
-            key: Cache key
-            
+            key: Cache key to retrieve
+
         Returns:
-            Cache entry or None if not found or expired
+            CacheEntry if found and not expired, None otherwise.
+            Returns None for missing keys, expired entries, or deserialization errors.
         """
         ...
     
     def put(self, key: str, entry: CacheEntry) -> bool:
-        """Put entry in cache.
-        
+        """Store a cache entry.
+
         Args:
-            key: Cache key
-            entry: Cache entry to store
-            
+            key: Cache key for storage
+            entry: CacheEntry object to store
+
         Returns:
-            True if stored successfully, False otherwise
+            True if stored successfully, False on failure.
+            May return False due to serialization errors, size limits,
+            or backend storage issues.
         """
         ...
     

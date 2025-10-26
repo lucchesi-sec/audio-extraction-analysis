@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in logging_factory.py",
-  "description": "Review the documentation and comments in ./src/utils/logging_factory.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in common.py",
+  "description": "Review the documentation and comments in ./src/cache/common.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "8a37f4c9-2d7c-4616-a130-4c34ebc63a71",
+    "work_item_id": "7244b46b-e157-4239-913f-17d6cbc65356",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T17:27:31.149152",
+      "discovered_at": "2025-10-26T17:27:31.149164",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:22:17.476592",
+  "timestamp": "2025-10-26T19:23:15.622220",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
