@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in test_concise_analyzer.py",
-  "description": "Review the documentation and comments in ./tests/unit/test_concise_analyzer.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in ffmpeg_core.py",
+  "description": "Review the documentation and comments in ./src/services/ffmpeg_core.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "fd1d63d0-7d18-45cf-8523-016b65b6a132",
+    "work_item_id": "3ca4a87d-f2b3-468f-b0fd-0154e8297022",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T18:54:56.306480",
+      "discovered_at": "2025-10-26T19:08:35.253029",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T20:01:49.963678",
+  "timestamp": "2025-10-26T20:03:30.835975",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

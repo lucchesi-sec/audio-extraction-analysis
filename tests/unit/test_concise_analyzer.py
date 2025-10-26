@@ -259,7 +259,18 @@ def test_speaker_insights_without_speakers():
 
 
 def test_sentiment_analysis_with_data():
-    """Test sentiment analysis section with sentiment data."""
+    """
+    Test sentiment analysis section with emotional tone distribution.
+
+    Verifies:
+    - Each sentiment category (positive, neutral, negative) is displayed
+    - Appropriate emoji is used for each category (😊, 😐, 😔)
+    - Segment counts are shown for each sentiment
+    - Helps users understand the emotional tone of the conversation
+
+    Uses unbalanced data (10 positive, 5 neutral, 2 negative) to test
+    realistic sentiment distributions.
+    """
     result = _make_basic_result()
     result.sentiment_distribution = {
         "positive": 10,
@@ -291,7 +302,18 @@ def test_sentiment_analysis_without_data():
 
 
 def test_highlights_and_quotes_extraction():
-    """Test that highlights extract meaningful sentences."""
+    """
+    Test extraction of key highlights and memorable quotes.
+
+    The analyzer extracts important sentences based on:
+    - Sentence length (longer sentences often contain more substance)
+    - Keyword presence (domain-specific or action-oriented terms)
+    - Contextual importance
+
+    This test uses deliberately long, content-rich sentences to verify
+    the extraction algorithm identifies meaningful highlights rather than
+    short, trivial statements.
+    """
     # Create a result with longer, more meaningful sentences
     result = TranscriptionResult(
         transcript=(
@@ -316,7 +338,18 @@ def test_highlights_and_quotes_extraction():
 
 
 def test_action_items_with_intents():
-    """Test action items section when intents are provided."""
+    """
+    Test action items section when intent data is available.
+
+    When the transcription provider includes intent classification
+    (inform, decide, action, question, etc.), these are displayed
+    as structured intents to help users understand conversation goals.
+
+    Verifies:
+    - Intent categories are displayed
+    - Intents are properly formatted (capitalized)
+    - Duplicate intents are handled correctly
+    """
     result = _make_basic_result()
     result.intents = ["inform", "decide", "action", "decide"]
 
@@ -330,7 +363,17 @@ def test_action_items_with_intents():
 
 
 def test_action_items_without_intents():
-    """Test action items extraction from transcript."""
+    """
+    Test action items extraction when no intent classification is available.
+
+    Falls back to keyword-based extraction from the transcript, looking for:
+    - Modal verbs: "should", "must", "need to", "have to"
+    - Action verbs: "will", "going to", "plan to"
+    - Imperative phrases suggesting tasks or decisions
+
+    The basic test result includes phrases like "should follow up" and
+    "need to ensure" to verify keyword detection works.
+    """
     result = _make_basic_result()
     result.intents = []
 
@@ -343,7 +386,18 @@ def test_action_items_without_intents():
 
 
 def test_timeline_with_chapters():
-    """Test timeline section with chapter data."""
+    """
+    Test timeline generation using chapter/topic segmentation data.
+
+    When the transcription includes chapter markers (topic-based segments),
+    the timeline displays these as "Topic Segments" showing:
+    - Start and end times for each chapter
+    - Topics discussed in that time period
+    - Temporal structure of the conversation
+
+    This is preferred over utterance-based timelines for high-level navigation.
+    Test uses 2 chapters covering 0-60s and 60-120s with different topics.
+    """
     result = _make_basic_result()
     result.chapters = [
         TranscriptionChapter(
@@ -371,7 +425,18 @@ def test_timeline_with_chapters():
 
 
 def test_timeline_with_utterances():
-    """Test timeline section with utterance data when no chapters."""
+    """
+    Test timeline generation using utterance data as fallback.
+
+    When chapter data is unavailable, the timeline falls back to displaying
+    individual utterances as "Key Moments":
+    - Timestamp for each utterance
+    - Speaker identification
+    - Text of what was said
+
+    This provides more granular temporal navigation but is less structured
+    than chapter-based timelines. Test uses 2 utterances from different speakers.
+    """
     result = _make_basic_result()
     result.chapters = []
     result.utterances = [
@@ -402,7 +467,18 @@ def test_timeline_without_data():
 
 
 def test_metadata_generation():
-    """Test metadata section generation."""
+    """
+    Test technical metadata section generation.
+
+    The metadata section provides transparency about the analysis:
+    - Provider features used (timestamps, diarization, topic detection, etc.)
+    - Source file information
+    - Data statistics (number of speakers, chapters, utterances)
+    - Processing details
+
+    This helps users understand what capabilities were available during
+    transcription and what data the analysis is based on.
+    """
     result = _make_basic_result()
     result.speakers = [TranscriptionSpeaker(id=0, total_time=60.0, percentage=50.0)]
     result.chapters = [
@@ -424,7 +500,16 @@ def test_metadata_generation():
 
 
 def test_format_duration_seconds_only():
-    """Test duration formatting for times under a minute."""
+    """
+    Test duration formatting for short durations (under 1 minute).
+
+    Verifies MM:SS format is used correctly:
+    - 0 seconds → "00:00"
+    - 30 seconds → "00:30"
+    - 59 seconds → "00:59"
+
+    This format is used throughout the report for timestamps and durations.
+    """
     analyzer = ConciseAnalyzer()
 
     assert analyzer._format_duration(0) == "00:00"
@@ -433,7 +518,16 @@ def test_format_duration_seconds_only():
 
 
 def test_format_duration_minutes():
-    """Test duration formatting for times with minutes."""
+    """
+    Test duration formatting for medium durations (1-59 minutes).
+
+    Verifies MM:SS format handles minutes correctly:
+    - 60 seconds (1 min) → "01:00"
+    - 90 seconds (1.5 min) → "01:30"
+    - 3599 seconds (59 min 59 sec) → "59:59"
+
+    This is the most common format for typical audio/video content.
+    """
     analyzer = ConciseAnalyzer()
 
     assert analyzer._format_duration(60) == "01:00"
@@ -442,7 +536,17 @@ def test_format_duration_minutes():
 
 
 def test_format_duration_hours():
-    """Test duration formatting for times with hours."""
+    """
+    Test duration formatting for long durations (1+ hours).
+
+    Verifies HH:MM:SS format is used for content over an hour:
+    - 3600 seconds (1 hour) → "01:00:00"
+    - 3661 seconds (1h 1m 1s) → "01:01:01"
+    - 7200 seconds (2 hours) → "02:00:00"
+    - 7325 seconds (2h 2m 5s) → "02:02:05"
+
+    Format automatically switches to include hours when duration ≥ 3600s.
+    """
     analyzer = ConciseAnalyzer()
 
     assert analyzer._format_duration(3600) == "01:00:00"
@@ -452,7 +556,18 @@ def test_format_duration_hours():
 
 
 def test_get_sentiment_emoji():
-    """Test sentiment emoji mapping."""
+    """
+    Test sentiment-to-emoji mapping for visual representation.
+
+    Maps sentiment categories to appropriate emojis:
+    - positive → 😊 (smiling face)
+    - negative → 😔 (pensive face)
+    - neutral → 😐 (neutral face)
+    - unknown/other → 🤔 (thinking face)
+
+    The mapping is case-insensitive to handle various provider formats.
+    Emojis enhance readability in the markdown report.
+    """
     analyzer = ConciseAnalyzer()
 
     assert analyzer._get_sentiment_emoji("positive") == "😊"
