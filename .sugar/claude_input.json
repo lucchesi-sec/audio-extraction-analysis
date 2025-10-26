@@ -1,0 +1,43 @@
+{
+  "task_type": "feature",
+  "title": "Remove error coordination system",
+  "description": "{\n  \"priority\": 5,\n  \"type\": \"refactor\",\n  \"context\": \"Delete src/error_coordination/ directory (478 LOC). Microservices error handling patterns (circuit breaker, cascade detection, metrics) for single-process CLI. Verified as completely unused.\",\n  \"business_context\": \"Simplifies error handling, removes unnecessary abstraction. Zero risk removal.\",\n  \"technical_requirements\": [\n    \"Delete src/error_coordination/config.py (478 LOC)\",\n    \"Verify no ErrorCoordinator imports remain\",\n    \"Run test suite to verify zero impact\"\n  ],\n  \"success_criteria\": [\n    \"error_coordination directory deleted\",\n    \"All tests pass\",\n    \"No error_coordination imports remain\"\n  ]\n}",
+  "execution_mode": "ExecutionMode.AGENT",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_fallback": true,
+  "context": {
+    "work_item_id": "8e820e72-9c68-4b61-a386-517a06b19f3a",
+    "source_type": "cli",
+    "priority": 3,
+    "attempts": 1,
+    "files_involved": null,
+    "repository_info": null,
+    "previous_attempts": null,
+    "session_context": {
+      "added_via": "sugar_cli",
+      "timestamp": "2025-10-26T16:44:34.193669",
+      "parsed_description": {
+        "priority": 5,
+        "type": "refactor",
+        "context": "Delete src/error_coordination/ directory (478 LOC). Microservices error handling patterns (circuit breaker, cascade detection, metrics) for single-process CLI. Verified as completely unused.",
+        "business_context": "Simplifies error handling, removes unnecessary abstraction. Zero risk removal.",
+        "technical_requirements": [
+          "Delete src/error_coordination/config.py (478 LOC)",
+          "Verify no ErrorCoordinator imports remain",
+          "Run test suite to verify zero impact"
+        ],
+        "success_criteria": [
+          "error_coordination directory deleted",
+          "All tests pass",
+          "No error_coordination imports remain"
+        ]
+      },
+      "description_format": "json"
+    }
+  },
+  "timestamp": "2025-10-26T16:50:24.332831",
+  "sugar_version": "2.1.0",
+  "continue_session": false,
+  "timeout_seconds": 1800,
+  "working_directory": null
+}

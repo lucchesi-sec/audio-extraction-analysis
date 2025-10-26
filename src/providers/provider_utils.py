@@ -9,10 +9,8 @@ import logging
 from typing import Optional
 
 from ..config.config import Config
-from ..error_coordination.config import (
-    CircuitBreakerConfig,
-    RetryConfig,
-)
+from ..utils.retry import RetryConfig
+from .base import CircuitBreakerConfig
 
 logger = logging.getLogger(__name__)
 
