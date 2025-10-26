@@ -1,12 +1,12 @@
 {
   "task_type": "feature",
-  "title": "Optimize cache eviction to O(log n)",
-  "description": "{\n  \"priority\": 3,\n  \"type\": \"refactor\",\n  \"context\": \"Replace O(n) linear scans in all 6 eviction strategies with heap-based structures. Current: iterates entire key set on every eviction. At 10k entries = 10k iterations.\",\n  \"business_context\": \"100x performance improvement at scale. Critical for large cache sizes.\",\n  \"technical_requirements\": [\n    \"LRU: Use OrderedDict.popitem(last=False) for O(1)\",\n    \"LFU: Use heapq by access_count for O(log n)\",\n    \"TTL: Use heapq by expiry for O(log n)\",\n    \"FIFO: Use queue or timestamp index\",\n    \"Update src/cache/eviction.py (lines 13-72)\",\n    \"Add performance benchmarks\"\n  ],\n  \"success_criteria\": [\n    \"All eviction strategies O(log n) or better\",\n    \"Benchmark shows 50-100x improvement at 10k entries\",\n    \"All cache tests pass\",\n    \"Backward compatibility maintained\"\n  ]\n}",
+  "title": "Cache file hashes to eliminate redundant I/O",
+  "description": "{\n  \"priority\": 3,\n  \"type\": \"refactor\",\n  \"context\": \"Cache get/put rehashes entire audio file. 2GB file = 260k chunk reads per operation. Store hash in memory keyed by (path, mtime, size).\",\n  \"business_context\": \"Eliminates 99% of redundant file I/O. Critical for large files.\",\n  \"technical_requirements\": [\n    \"Add _file_hash_cache: dict keyed by (path, mtime, size)\",\n    \"Check cache before hashing in _hash_file()\",\n    \"Invalidate cache entry when file changes\",\n    \"Update src/cache/transcription_cache.py (lines 80-106)\",\n    \"Add tests for cache invalidation on file change\"\n  ],\n  \"success_criteria\": [\n    \"File only hashed once per (path, mtime, size)\",\n    \"Benchmark shows 50-100x faster cache operations\",\n    \"Tests verify cache invalidation works\",\n    \"Large file operations near-instant\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "904f6ea7-0548-40b6-968e-4cb615542349",
+    "work_item_id": "f859ebb4-a624-44c6-ae58-9e1be78b9a7d",
     "source_type": "cli",
     "priority": 3,
     "attempts": 1,
@@ -15,31 +15,30 @@
     "previous_attempts": null,
     "session_context": {
       "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:45:30.089409",
+      "timestamp": "2025-10-26T16:45:31.105721",
       "parsed_description": {
         "priority": 3,
         "type": "refactor",
-        "context": "Replace O(n) linear scans in all 6 eviction strategies with heap-based structures. Current: iterates entire key set on every eviction. At 10k entries = 10k iterations.",
-        "business_context": "100x performance improvement at scale. Critical for large cache sizes.",
+        "context": "Cache get/put rehashes entire audio file. 2GB file = 260k chunk reads per operation. Store hash in memory keyed by (path, mtime, size).",
+        "business_context": "Eliminates 99% of redundant file I/O. Critical for large files.",
         "technical_requirements": [
-          "LRU: Use OrderedDict.popitem(last=False) for O(1)",
-          "LFU: Use heapq by access_count for O(log n)",
-          "TTL: Use heapq by expiry for O(log n)",
-          "FIFO: Use queue or timestamp index",
-          "Update src/cache/eviction.py (lines 13-72)",
-          "Add performance benchmarks"
+          "Add _file_hash_cache: dict keyed by (path, mtime, size)",
+          "Check cache before hashing in _hash_file()",
+          "Invalidate cache entry when file changes",
+          "Update src/cache/transcription_cache.py (lines 80-106)",
+          "Add tests for cache invalidation on file change"
         ],
         "success_criteria": [
-          "All eviction strategies O(log n) or better",
-          "Benchmark shows 50-100x improvement at 10k entries",
-          "All cache tests pass",
-          "Backward compatibility maintained"
+          "File only hashed once per (path, mtime, size)",
+          "Benchmark shows 50-100x faster cache operations",
+          "Tests verify cache invalidation works",
+          "Large file operations near-instant"
         ]
       },
       "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:12:22.875191",
+  "timestamp": "2025-10-26T17:19:01.094020",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

@@ -10,7 +10,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from threading import RLock
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,10 @@ class CacheKey:
     file_hash: str
     provider: str
     settings_hash: str
+
+    # Class-level file hash cache keyed by (path, mtime, size) to eliminate redundant I/O
+    # Shared across all instances to cache file hashes based on file metadata
+    _file_hash_cache: ClassVar[Dict[Tuple[str, float, int], str]] = {}
 
     def __str__(self) -> str:
         """String representation of cache key."""
@@ -86,9 +90,12 @@ class CacheKey:
 
         return cls(file_hash=file_hash, provider=provider, settings_hash=settings_hash)
 
-    @staticmethod
-    def _hash_file(file_path: Path, chunk_size: int = 8192) -> str:
-        """Generate SHA256 hash of file content.
+    @classmethod
+    def _hash_file(cls, file_path: Path, chunk_size: int = 8192) -> str:
+        """Generate SHA256 hash of file content with intelligent caching.
+
+        Uses file metadata (path, mtime, size) as cache key to avoid redundant I/O.
+        For a 2GB file, this reduces 260k+ chunk reads to zero on cache hit.
 
         Args:
             file_path: Path to file
@@ -97,13 +104,52 @@ class CacheKey:
         Returns:
             File hash string
         """
-        sha256 = hashlib.sha256()
+        import os
 
+        # Get file stats for cache key
+        stat = os.stat(file_path)
+        cache_key = (str(file_path), stat.st_mtime, stat.st_size)
+
+        # Check cache first
+        if cache_key in cls._file_hash_cache:
+            return cls._file_hash_cache[cache_key]
+
+        # Cache miss - compute hash
+        sha256 = hashlib.sha256()
         with open(file_path, "rb") as f:
             while chunk := f.read(chunk_size):
                 sha256.update(chunk)
 
-        return sha256.hexdigest()[:32]
+        file_hash = sha256.hexdigest()[:32]
+
+        # Store in cache
+        cls._file_hash_cache[cache_key] = file_hash
+
+        return file_hash
+
+    @classmethod
+    def clear_hash_cache(cls, file_path: Optional[Path] = None) -> int:
+        """Clear file hash cache entries.
+
+        Args:
+            file_path: Specific file to clear (None for all)
+
+        Returns:
+            Number of entries cleared
+        """
+        if file_path is None:
+            # Clear all entries
+            count = len(cls._file_hash_cache)
+            cls._file_hash_cache.clear()
+            return count
+
+        # Clear entries for specific file path
+        path_str = str(file_path)
+        keys_to_remove = [key for key in cls._file_hash_cache.keys() if key[0] == path_str]
+        for key in keys_to_remove:
+            del cls._file_hash_cache[key]
+
+        return len(keys_to_remove)
 
 
 @dataclass
@@ -512,6 +558,13 @@ class TranscriptionCache:
                     if backend.delete(key_str):
                         count += 1
                         self.stats.entry_count -= 1
+
+            # Clear file hash cache for invalidated file
+            if file_path:
+                CacheKey.clear_hash_cache(file_path)
+            elif count > 0:
+                # If invalidating all, clear entire hash cache
+                CacheKey.clear_hash_cache()
 
         logger.info(f"Invalidated {count} cache entries")
         return count
