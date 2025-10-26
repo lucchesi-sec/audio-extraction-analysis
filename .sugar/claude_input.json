@@ -1,12 +1,12 @@
 {
-  "task_type": "refactor",
-  "title": "Code review and optimization for __init__.py",
-  "description": "Review ./src/models/__init__.py for potential improvements: code clarity, performance, error handling, and best practices.",
+  "task_type": "documentation",
+  "title": "Review and improve documentation in eviction.py",
+  "description": "Review the documentation and comments in ./src/cache/eviction.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "e6c17bc1-fa26-418a-ba79-04b8a9c845ba",
+    "work_item_id": "919634fd-9ac9-4248-90cf-d81cf4f4eaf6",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "refactor",
-      "discovered_at": "2025-10-26T17:59:16.211669",
+      "task_type": "documentation",
+      "discovered_at": "2025-10-26T18:08:41.532643",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:38:58.362654",
+  "timestamp": "2025-10-26T19:40:04.855319",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
