@@ -431,7 +431,7 @@ class Config:
     @classmethod
     def validate(cls, provider: str = "deepgram") -> None:
         """Validate configuration for specified provider."""
-        config = get_config()
+        config = cls()
 
         if provider == "deepgram":
             if not config.DEEPGRAM_API_KEY:
@@ -471,7 +471,7 @@ class Config:
     @classmethod
     def get_deepgram_api_key(cls) -> str:
         """Get Deepgram API key with validation."""
-        config = get_config()
+        config = cls()
         if not config.DEEPGRAM_API_KEY:
             raise ValueError("DEEPGRAM_API_KEY not configured")
         return config.DEEPGRAM_API_KEY
@@ -479,7 +479,7 @@ class Config:
     @classmethod
     def get_elevenlabs_api_key(cls) -> str:
         """Get ElevenLabs API key with validation."""
-        config = get_config()
+        config = cls()
         if not config.ELEVENLABS_API_KEY:
             raise ValueError("ELEVENLABS_API_KEY not configured")
         return config.ELEVENLABS_API_KEY
@@ -487,7 +487,7 @@ class Config:
     @classmethod
     def get_gemini_api_key(cls) -> str:
         """Get Gemini API key with validation."""
-        config = get_config()
+        config = cls()
         if not config.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not configured")
         return config.GEMINI_API_KEY
@@ -495,7 +495,7 @@ class Config:
     @classmethod
     def is_configured(cls, provider: Optional[str] = None) -> bool:
         """Check if provider is configured."""
-        config = get_config()
+        config = cls()
 
         if provider == "deepgram":
             return config.DEEPGRAM_API_KEY is not None
@@ -521,7 +521,7 @@ class Config:
     @classmethod
     def get_available_providers(cls) -> List[str]:
         """Get list of configured providers."""
-        config = get_config()
+        config = cls()
         available = []
 
         if config.DEEPGRAM_API_KEY:
@@ -548,7 +548,7 @@ class Config:
     @classmethod
     def validate_file_extension(cls, file_path: Path) -> bool:
         """Validate file extension."""
-        config = get_config()
+        config = cls()
         return file_path.suffix.lower() in config.allowed_extensions
 
 
@@ -568,5 +568,12 @@ def get_config() -> Config:
     return _config_instance
 
 
+def _reset_config() -> None:
+    """Reset singleton instance. For testing purposes only."""
+    global _config_instance
+    with _config_lock:
+        _config_instance = None
+
+
 # For backward compatibility with __init__.py exports
-__all__ = ["Config", "get_config"]
+__all__ = ["Config", "get_config", "_reset_config"]

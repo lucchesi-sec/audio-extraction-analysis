@@ -1,4 +1,17 @@
-"""Tests for the ConciseAnalyzer that generates a single comprehensive analysis file."""
+"""
+Tests for the ConciseAnalyzer module.
+
+The ConciseAnalyzer generates a single, unified markdown analysis report from
+transcription results, consolidating all insights (topics, sentiment, speakers,
+timeline, etc.) into one comprehensive file instead of multiple separate outputs.
+
+Test Coverage:
+    - File creation and naming
+    - Content generation for all report sections
+    - Handling of optional/missing data
+    - Formatting and duration helpers
+    - Integration scenarios with full feature sets
+"""
 
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +26,21 @@ from src.models.transcription import (
 
 
 def _make_basic_result() -> TranscriptionResult:
-    """Create a basic transcription result for testing."""
+    """
+    Create a basic transcription result for testing.
+
+    Returns a minimal but realistic TranscriptionResult with:
+    - Sample transcript containing action-oriented language (for intent detection testing)
+    - 2-minute duration (120 seconds) for timeline testing
+    - Deepgram Nova 3 provider with common features
+    - No optional fields populated (speakers, chapters, sentiment, etc.)
+
+    This baseline result is used by most tests, which then add specific fields
+    (like speakers, topics, or sentiment) as needed for their test scenarios.
+
+    Returns:
+        TranscriptionResult: A basic transcription result suitable for testing.
+    """
     return TranscriptionResult(
         transcript=(
             "This is a sample transcript. We should follow up on action items. "
@@ -30,7 +57,14 @@ def _make_basic_result() -> TranscriptionResult:
 
 
 def test_concise_analyzer_creates_analysis_file(tmp_path):
-    """Test that analyze_and_save creates the analysis file."""
+    """
+    Test that analyze_and_save creates the analysis file with correct naming.
+
+    Verifies:
+    - Output file is created at the specified path
+    - File name follows the pattern: {video_name}_analysis.md
+    - File is saved in the correct output directory
+    """
     result = _make_basic_result()
     analyzer = ConciseAnalyzer()
 
@@ -42,7 +76,22 @@ def test_concise_analyzer_creates_analysis_file(tmp_path):
 
 
 def test_concise_analyzer_file_has_content(tmp_path):
-    """Test that the generated analysis file has meaningful content."""
+    """
+    Test that the generated analysis file contains all required sections.
+
+    Verifies the presence of all 8 main sections in the generated markdown:
+    1. Audio Analysis Report (header)
+    2. Overview (summary and word count)
+    3. Key Topics (detected themes)
+    4. Speaker Analysis (speaker diarization data)
+    5. Sentiment Analysis (emotional tone distribution)
+    6. Key Highlights & Quotes (important excerpts)
+    7. Intents & Action Items (actionable content)
+    8. Timeline (temporal breakdown)
+    9. Technical Metadata (processing details)
+
+    This ensures the complete structure is present regardless of data availability.
+    """
     result = _make_basic_result()
     result.summary = "This is a test summary of the audio content."
 
@@ -64,7 +113,17 @@ def test_concise_analyzer_file_has_content(tmp_path):
 
 
 def test_header_generation():
-    """Test that header is generated correctly with metadata."""
+    """
+    Test that the report header contains essential metadata.
+
+    Verifies the header includes:
+    - Report title
+    - Provider name and version (e.g., "Deepgram Nova 3")
+    - Formatted duration (MM:SS or HH:MM:SS format)
+    - Source audio file name
+
+    The header provides critical context for understanding the analysis report.
+    """
     result = _make_basic_result()
     analyzer = ConciseAnalyzer()
 
@@ -77,7 +136,13 @@ def test_header_generation():
 
 
 def test_overview_with_summary():
-    """Test overview section when summary is provided."""
+    """
+    Test overview section generation when a summary is provided.
+
+    When TranscriptionResult includes a summary field, the overview section
+    should display that summary along with basic statistics (word count).
+    This is the preferred path as summaries provide concise content descriptions.
+    """
     result = _make_basic_result()
     result.summary = "This is a comprehensive summary of the content."
 
@@ -90,7 +155,17 @@ def test_overview_with_summary():
 
 
 def test_overview_without_summary():
-    """Test overview section generates fallback when no summary provided."""
+    """
+    Test overview section fallback when no summary is provided.
+
+    When TranscriptionResult.summary is None, the analyzer should generate
+    a fallback overview using transcript excerpts or statistics. This ensures
+    the Overview section always has meaningful content, even without AI-generated summaries.
+
+    Verifies:
+    - Section header is present
+    - Fallback content is generated (e.g., "Key Content:" label)
+    """
     result = _make_basic_result()
     result.summary = None
 
@@ -102,7 +177,17 @@ def test_overview_without_summary():
 
 
 def test_key_topics_with_data():
-    """Test key topics section with topic data."""
+    """
+    Test key topics section generation with topic frequency data.
+
+    Verifies:
+    - Topics are displayed with mention counts
+    - Topics are sorted by frequency (descending)
+    - Topic names are properly formatted (title-cased)
+    - Section shows most discussed themes first
+
+    The test uses varying mention counts (2, 3, 5, 7) to verify sorting behavior.
+    """
     result = _make_basic_result()
     result.topics = {
         "planning": 5,
@@ -134,7 +219,17 @@ def test_key_topics_without_data():
 
 
 def test_speaker_insights_with_speakers():
-    """Test speaker insights section with speaker data."""
+    """
+    Test speaker analysis section with diarization data.
+
+    Verifies speaker information is formatted correctly:
+    - Speaker IDs are labeled (Speaker 0, Speaker 1, etc.)
+    - Speaking time is formatted as MM:SS or HH:MM:SS
+    - Percentage of total speaking time is displayed
+    - Multiple speakers are all included
+
+    Uses realistic test data: 70s (58.3%) and 50s (41.7%) for a balanced conversation.
+    """
     result = _make_basic_result()
     result.speakers = [
         TranscriptionSpeaker(id=0, total_time=70.0, percentage=58.3),
