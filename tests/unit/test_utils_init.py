@@ -244,3 +244,138 @@ class TestUtilsPackage:
             )
         except Exception as e:
             pytest.fail(f"Importing src.utils should not raise exceptions: {e}")
+
+    def test_retry_config_instantiation(self):
+        """Test that RetryConfig can be instantiated with default parameters."""
+        from src.utils import RetryConfig
+
+        # Test default instantiation
+        config = RetryConfig()
+        assert config is not None
+        assert config.max_attempts == 3
+        assert config.base_delay == 1.0
+        assert config.max_delay == 60.0
+        assert config.exponential_base == 2.0
+        assert config.jitter is True
+
+        # Test custom instantiation
+        custom_config = RetryConfig(max_attempts=5, base_delay=2.0)
+        assert custom_config.max_attempts == 5
+        assert custom_config.base_delay == 2.0
+
+    def test_retry_exhausted_error_instantiation(self):
+        """Test that RetryExhaustedError can be instantiated correctly."""
+        from src.utils import RetryExhaustedError
+
+        original_exception = ValueError("Test error")
+        retry_error = RetryExhaustedError(
+            attempts=3,
+            last_exception=original_exception,
+            total_delay=5.5
+        )
+
+        assert retry_error is not None
+        assert retry_error.attempts == 3
+        assert retry_error.last_exception is original_exception
+        assert retry_error.total_delay == 5.5
+        assert "3 attempts" in str(retry_error)
+        assert "5.50s" in str(retry_error)
+        assert "Test error" in str(retry_error)
+
+    def test_docstring_preservation(self):
+        """Test that re-exported items preserve their original docstrings."""
+        from src.utils import (
+            RetryConfig,
+            RetryExhaustedError,
+            calculate_delay,
+            retry_sync,
+        )
+
+        # Test that exported items have docstrings
+        assert RetryConfig.__doc__ is not None
+        assert "Configuration for retry behavior" in RetryConfig.__doc__
+
+        assert RetryExhaustedError.__doc__ is not None
+        assert "all retry attempts have been exhausted" in RetryExhaustedError.__doc__
+
+        assert calculate_delay.__doc__ is not None
+        assert "exponential backoff" in calculate_delay.__doc__.lower()
+
+        assert retry_sync.__doc__ is not None
+        assert "synchronous functions" in retry_sync.__doc__.lower()
+
+    def test_module_name_and_package(self):
+        """Test module-level attributes are correctly set."""
+        import src.utils
+
+        assert src.utils.__name__ == "src.utils"
+        assert src.utils.__package__ == "src.utils"
+        assert hasattr(src.utils, "__file__")
+
+    def test_submodule_still_accessible(self):
+        """Test that retry submodule remains accessible after imports."""
+        import src.utils
+
+        # The retry submodule should still be accessible
+        assert hasattr(src.utils, "retry")
+        from src.utils import retry
+        assert retry is not None
+        assert hasattr(retry, "RetryConfig")
+        assert hasattr(retry, "RetryBudget")  # Not in __all__ but in submodule
+
+    def test_retry_budget_not_exported(self):
+        """Test that RetryBudget is NOT accessible from src.utils (not in __all__)."""
+        import src.utils
+
+        # RetryBudget should NOT be directly accessible from src.utils
+        assert not hasattr(src.utils, "RetryBudget")
+
+        # But it should be accessible from the retry submodule
+        from src.utils.retry import RetryBudget
+        assert RetryBudget is not None
+
+    def test_function_has_expected_signature(self):
+        """Test that exported functions have basic expected parameters."""
+        import inspect
+        from src.utils import calculate_delay, retry_sync
+
+        # Test calculate_delay signature
+        calc_sig = inspect.signature(calculate_delay)
+        assert "attempt" in calc_sig.parameters
+        assert "base_delay" in calc_sig.parameters
+        assert "max_delay" in calc_sig.parameters
+        assert "exponential_base" in calc_sig.parameters
+        assert "jitter" in calc_sig.parameters
+
+        # Test retry_sync signature
+        retry_sig = inspect.signature(retry_sync)
+        assert "config" in retry_sig.parameters
+        assert "max_attempts" in retry_sig.parameters
+
+    def test_import_idempotency(self):
+        """Test that multiple imports don't cause issues."""
+        # Import multiple times
+        import src.utils
+        from src.utils import RetryConfig
+        import src.utils as utils_alias
+        from src.utils import RetryConfig as RC
+
+        # All should reference the same objects
+        assert src.utils.RetryConfig is RetryConfig
+        assert utils_alias.RetryConfig is RetryConfig
+        assert RC is RetryConfig
+
+    def test_exception_inheritance_chain(self):
+        """Test that RetryExhaustedError has proper exception inheritance."""
+        from src.utils import RetryExhaustedError
+
+        # Should inherit from Exception (already tested)
+        assert issubclass(RetryExhaustedError, Exception)
+        assert issubclass(RetryExhaustedError, BaseException)
+
+        # Create an instance and verify it's catchable
+        try:
+            raise RetryExhaustedError(3, ValueError("test"), 1.5)
+        except Exception as e:
+            assert isinstance(e, RetryExhaustedError)
+            assert isinstance(e, Exception)

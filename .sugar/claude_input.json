@@ -1,28 +1,26 @@
 {
   "task_type": "test",
-  "title": "Add tests for __init__.py",
-  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/config/__init__.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
+  "title": "Review test coverage for test_utils_init.py",
+  "description": "Analyze ./tests/unit/test_utils_init.py and ensure adequate test coverage. Add missing tests for critical functionality.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "84aed5a7-cd98-42e1-a9ce-9b47e162c7a1",
-    "source_type": "test_coverage",
+    "work_item_id": "2b9cdd4a-9fb2-4fc2-a8ec-e9f5ff090c08",
+    "source_type": "maintenance_generator",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "test_analysis": {
-        "work_type": "missing_tests",
-        "details": {},
-        "discovered_at": "2025-10-26T18:54:56.651289",
-        "source_type": "test_coverage"
-      }
+      "maintenance_task": true,
+      "task_type": "test",
+      "discovered_at": "2025-10-26T18:55:36.743044",
+      "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T18:54:56.962726",
+  "timestamp": "2025-10-26T18:55:37.513446",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
