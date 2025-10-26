@@ -1,12 +1,12 @@
 {
   "task_type": "test",
-  "title": "Review test coverage for test_utils_init.py",
-  "description": "Analyze ./tests/unit/test_utils_init.py and ensure adequate test coverage. Add missing tests for critical functionality.",
+  "title": "Review test coverage for provider_utils.py",
+  "description": "Analyze ./src/providers/provider_utils.py and ensure adequate test coverage. Add missing tests for critical functionality.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "2b9cdd4a-9fb2-4fc2-a8ec-e9f5ff090c08",
+    "work_item_id": "3f7d4005-8f12-4a65-9ef0-914685ffdae3",
     "source_type": "maintenance_generator",
     "priority": 3,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "test",
-      "discovered_at": "2025-10-26T18:55:36.743044",
+      "discovered_at": "2025-10-26T18:55:36.743063",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T18:55:37.513446",
+  "timestamp": "2025-10-26T18:57:38.470235",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
