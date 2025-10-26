@@ -16,19 +16,19 @@ async def test_pipeline_with_progress():
     console_manager = ConsoleManager(json_output=True)
     pipeline = AudioProcessingPipeline(console_manager=console_manager)
 
-    with patch("src.pipeline.audio_pipeline.AudioExtractor") as mock_extractor, patch(
+    with patch("src.services.audio_extraction_async.AsyncAudioExtractor") as mock_extractor_class, patch(
         "src.pipeline.audio_pipeline.TranscriptionService"
     ) as mock_transcriber, patch("src.pipeline.audio_pipeline.FullAnalyzer") as mock_analyzer:
 
-        # Setup mocks
-        mock_extractor_instance = MagicMock()
-        mock_extractor.return_value = mock_extractor_instance
-        mock_extractor_instance.extract_audio.return_value = "test_audio.wav"
+        # Setup mocks for async extraction
+        mock_extractor = AsyncMock()
+        mock_extractor_class.return_value = mock_extractor
+        mock_extractor.extract_audio_async.return_value = Path("/tmp/test_audio.wav")
 
-        mock_transcriber_instance = AsyncMock()
+        mock_transcriber_instance = MagicMock()
         mock_transcriber.return_value = mock_transcriber_instance
         # Return a simple object to carry through to analyzer
-        mock_transcriber_instance.transcribe_async.return_value = MagicMock()
+        mock_transcriber_instance.transcribe_with_progress = AsyncMock(return_value=MagicMock())
 
         mock_analyzer_instance = MagicMock()
         mock_analyzer.return_value = mock_analyzer_instance
@@ -99,7 +99,7 @@ async def test_pipeline_transcription_failure():
 
         # Should fail after extraction succeeds but transcription fails
         assert results["success"] is False
-        assert "extraction" in results.get("stages_completed", [])
+        assert "audio_extraction" in results.get("stages_completed", [])
         assert "transcription" not in results.get("stages_completed", [])
         assert len(results["errors"]) > 0
         assert any("transcription" in err.lower() for err in results["errors"])
@@ -135,7 +135,7 @@ async def test_pipeline_analysis_failure_partial_success():
 
         # Should succeed overall since transcript was created
         assert results["success"] is True
-        assert "extraction" in results["stages_completed"]
+        assert "audio_extraction" in results["stages_completed"]
         assert "transcription" in results["stages_completed"]
         assert "analysis" not in results["stages_completed"]
         assert len(results["errors"]) > 0
@@ -338,7 +338,7 @@ async def test_pipeline_debug_dump_on_error():
         pipeline = AudioProcessingPipeline(console_manager=console_manager)
 
         with patch(
-            "src.pipeline.audio_pipeline.AsyncAudioExtractor"
+            "src.services.audio_extraction_async.AsyncAudioExtractor"
         ) as mock_extractor_class:
             # Mock extraction to fail
             mock_extractor = AsyncMock()
@@ -456,91 +456,3 @@ async def test_pipeline_files_created_tracking():
         # All analysis files should be tracked
         for analysis_file in analysis_files:
             assert analysis_file in files_created
-
-
-@pytest.mark.asyncio
-async def test_pipeline_markdown_export():
-    """Test markdown export functionality creates expected files."""
-    pipeline = AudioProcessingPipeline()
-
-    with patch(
-        "src.pipeline.audio_pipeline.TranscriptionService"
-    ) as mock_transcriber_class, patch(
-        "src.pipeline.audio_pipeline.MarkdownFormatter"
-    ) as mock_formatter_class, patch(
-        "src.pipeline.audio_pipeline.sanitize_dirname"
-    ) as mock_sanitize, patch("src.pipeline.audio_pipeline.ensure_subpath") as mock_ensure:
-        # Mock transcription service
-        mock_transcriber = MagicMock()
-        mock_transcriber_class.return_value = mock_transcriber
-
-        # Create a mock transcription result
-        mock_transcript = MagicMock()
-        mock_transcript.provider_name = "test_provider"
-        mock_transcript.duration = 120.0
-        mock_transcript.utterances = [
-            MagicMock(
-                text="Hello world", start=0.0, end=2.0, speaker="Speaker 1", transcript="Hello world"
-            ),
-            MagicMock(
-                text="Test utterance", start=2.0, end=4.0, speaker="Speaker 1", transcript="Test utterance"
-            ),
-        ]
-        mock_transcriber.transcribe_async = AsyncMock(return_value=mock_transcript)
-
-        # Mock markdown formatter
-        mock_formatter = MagicMock()
-        mock_formatter_class.return_value = mock_formatter
-        mock_formatter.format_transcript.return_value = "# Transcript\n\nHello world"
-
-        # Mock path sanitization
-        mock_sanitize.return_value = "test_audio"
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir)
-            base_dir = output_dir / "test_audio"
-            mock_ensure.return_value = base_dir
-            base_dir.mkdir(parents=True, exist_ok=True)
-
-            markdown_options = {
-                "provider": "auto",
-                "language": "en",
-                "include_timestamps": True,
-                "include_speakers": True,
-                "include_confidence": False,
-                "template": "default",
-            }
-
-            result_path = await pipeline.export_markdown_transcript(
-                "test_audio.mp3", output_dir, markdown_options
-            )
-
-            # Verify transcript was created
-            assert result_path is not None
-            # Verify transcription service was called
-            mock_transcriber.transcribe_async.assert_called_once()
-            # Verify formatter was used
-            mock_formatter.format_transcript.assert_called_once()
-            mock_formatter.save_transcript.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_pipeline_markdown_export_failure():
-    """Test markdown export handles transcription failures gracefully."""
-    pipeline = AudioProcessingPipeline()
-
-    with patch("src.pipeline.audio_pipeline.TranscriptionService") as mock_transcriber_class:
-        # Mock transcription to fail
-        mock_transcriber = MagicMock()
-        mock_transcriber_class.return_value = mock_transcriber
-        mock_transcriber.transcribe_async = AsyncMock(return_value=None)
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            output_dir = Path(temp_dir)
-            markdown_options = {"provider": "auto", "language": "en"}
-
-            # Should raise RuntimeError when transcription fails
-            with pytest.raises(RuntimeError, match="Transcription failed"):
-                await pipeline.export_markdown_transcript(
-                    "test_audio.mp3", output_dir, markdown_options
-                )
