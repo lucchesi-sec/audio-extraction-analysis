@@ -317,6 +317,79 @@ For more information, see: https://github.com/lucchesi-sec/audio-extraction-anal
     return parser
 
 
+def _validate_extract_input(input_path: Path) -> None:
+    """Validate input file for extraction.
+
+    Args:
+        input_path: Path to input file
+
+    Raises:
+        ValueError: If input validation fails
+    """
+    try:
+        PathSanitizer.validate_path_security(input_path)
+    except ValueError as exc:
+        logger.error("Input file not found or invalid path")
+        logger.debug("Path validation failure for %s: %s", input_path, exc)
+        raise ValueError("Path validation failed") from exc
+
+    allowed_suffixes = {".mp3", ".mp4", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".mkv", ".mov"}
+    if input_path.suffix.lower() not in allowed_suffixes:
+        logger.error("Invalid or unsupported input file type")
+        logger.debug("Rejected file with suffix '%s'", input_path.suffix)
+        raise ValueError(f"Unsupported file type: {input_path.suffix}")
+
+    if not input_path.exists():
+        logger.error("Input file not found or invalid path")
+        logger.debug("Missing input path attempted: %s", input_path)
+        raise ValueError(f"File not found: {input_path}")
+
+
+def _determine_extract_output_path(input_path: Path, output_arg: Optional[str]) -> Path:
+    """Determine output path for extracted audio.
+
+    Args:
+        input_path: Input file path
+        output_arg: Optional output path from command arguments
+
+    Returns:
+        Path for output audio file
+    """
+    if output_arg:
+        return Path(output_arg)
+    return input_path.with_suffix(".mp3")
+
+
+def _execute_audio_extraction(
+    extractor: AudioExtractor,
+    input_path: Path,
+    output_path: Path,
+    quality: AudioQuality,
+    console_manager: Optional[ConsoleManager],
+) -> Optional[Path]:
+    """Execute audio extraction with optional progress tracking.
+
+    Args:
+        extractor: AudioExtractor instance
+        input_path: Input file path
+        output_path: Output file path
+        quality: Audio quality preset
+        console_manager: Optional console manager for progress display
+
+    Returns:
+        Path to extracted audio file, or None if extraction failed
+    """
+    if console_manager:
+        with console_manager.progress_context("Extracting audio...") as progress:
+            progress.update(10)
+            result_path = extractor.extract_audio(input_path, output_path, quality)
+            progress.update(100)
+    else:
+        result_path = extractor.extract_audio(input_path, output_path, quality)
+
+    return result_path
+
+
 def extract_command(args: argparse.Namespace, console_manager: Optional[ConsoleManager] = None) -> int:
     """Handle the extract subcommand.
 
@@ -328,43 +401,21 @@ def extract_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
         Exit code (0 for success, non-zero for failure)
     """
     try:
+        # Validate input file
         input_path = Path(args.input_file)
         try:
-            PathSanitizer.validate_path_security(input_path)
-        except ValueError as exc:
-            logger.error("Input file not found or invalid path")
-            logger.debug("Path validation failure for %s: %s", input_path, exc)
-            return 1
-
-        allowed_suffixes = {".mp3", ".mp4", ".wav", ".m4a", ".flac", ".aac", ".ogg", ".mkv", ".mov"}
-        if input_path.suffix.lower() not in allowed_suffixes:
-            logger.error("Invalid or unsupported input file type")
-            logger.debug("Rejected file with suffix '%s'", input_path.suffix)
-            return 1
-
-        if not input_path.exists():
-            logger.error("Input file not found or invalid path")
-            logger.debug("Missing input path attempted: %s", input_path)
+            _validate_extract_input(input_path)
+        except ValueError:
             return 1
 
         # Determine output path
-        if args.output:
-            output_path = Path(args.output)
-        else:
-            output_path = input_path.with_suffix(".mp3")
+        output_path = _determine_extract_output_path(input_path, args.output)
 
-        # Parse quality preset
-        quality_map = {
-            "high": AudioQuality.HIGH,
-            "standard": AudioQuality.STANDARD,
-            "speech": AudioQuality.SPEECH,
-            "compressed": AudioQuality.COMPRESSED,
-        }
+        # Parse quality preset (reuse existing helper)
+        quality = _parse_quality_preset(args.quality)
 
-        quality = quality_map.get(args.quality, AudioQuality.SPEECH)
-
+        # Setup logging and display
         display_name = input_path.name
-
         if console_manager:
             console_manager.setup_logging(logger)
             console_manager.print_stage("Audio Extraction", "starting")
@@ -375,16 +426,13 @@ def extract_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
         )
         logger.debug("Full input path: %s", input_path)
 
-        # Extract audio
+        # Execute extraction
         extractor = AudioExtractor()
-        if console_manager:
-            with console_manager.progress_context("Extracting audio...") as progress:
-                progress.update(10)
-                result_path = extractor.extract_audio(input_path, output_path, quality)
-                progress.update(100)
-        else:
-            result_path = extractor.extract_audio(input_path, output_path, quality)
+        result_path = _execute_audio_extraction(
+            extractor, input_path, output_path, quality, console_manager
+        )
 
+        # Handle result
         if result_path:
             if console_manager:
                 console_manager.print_stage("Audio Extraction", "complete")
