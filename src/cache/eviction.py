@@ -65,21 +65,38 @@ def select_lru_victim(backend: Any, keys: Set[str]) -> str:
         if entry:
             entries_with_time.append((entry.accessed_at, key))
 
+    # If no valid entries found (all None from backend.get), return arbitrary key
     if not entries_with_time:
         return next(iter(keys))
 
+    # min() on tuple compares by first element (accessed_at), return key at [1]
     return min(entries_with_time)[1]
 
 
 def select_lfu_victim(backend: Any, keys: Set[str]) -> str:
-    """Least Frequently Used victim selection - O(n) optimized with cached lookups.
+    """Select the least frequently used (LFU) cache entry as eviction victim.
 
-    Avoids intermediate list construction by using in-place comparison
-    while caching backend.get() results to avoid redundant calls.
+    Chooses the cache entry with the lowest access_count. Uses a single-pass
+    algorithm with in-place comparison to minimize memory allocation and avoid
+    redundant backend.get() calls.
+
+    Args:
+        backend: Cache backend with get(key) method returning entries with
+            access_count attribute (integer representing usage frequency).
+        keys: Set of candidate cache keys to consider for eviction. Must not
+            be empty.
+
+    Returns:
+        The key of the least frequently used entry. If no valid entries are found,
+        returns an arbitrary key from the input set.
+
+    Complexity:
+        O(n) where n is the number of keys, optimized with single-pass algorithm.
     """
     min_key = None
     min_count = float("inf")
 
+    # Single pass: track minimum access count and corresponding key
     for key in keys:
         entry = backend.get(key)
         if entry:
@@ -87,18 +104,37 @@ def select_lfu_victim(backend: Any, keys: Set[str]) -> str:
                 min_count = entry.access_count
                 min_key = key
 
+    # If no valid entries found, return arbitrary key; otherwise return min_key
     return min_key if min_key is not None else next(iter(keys))
 
 
 def select_ttl_victim(backend: Any, keys: Set[str]) -> str:
-    """TTL-based victim selection (closest to expiry) - O(n) optimized.
+    """Select the cache entry closest to expiration (TTL) as eviction victim.
 
-    Avoids intermediate list construction by using in-place comparison
-    while caching backend.get() results to avoid redundant calls.
+    Chooses the cache entry with the least remaining time-to-live (TTL). This
+    strategy prioritizes evicting entries that will expire soon anyway, making
+    space while minimizing the loss of potentially useful cached data. Uses a
+    single-pass algorithm with in-place comparison for efficiency.
+
+    Args:
+        backend: Cache backend with get(key) method returning entries with
+            ttl attribute (Optional[float], seconds until expiry) and
+            age_seconds() method (returns elapsed time since creation).
+        keys: Set of candidate cache keys to consider for eviction. Must not
+            be empty.
+
+    Returns:
+        The key of the entry with the least remaining TTL. Only considers entries
+        that have a TTL set. If no entries have TTL configured, returns an
+        arbitrary key from the input set.
+
+    Complexity:
+        O(n) where n is the number of keys, optimized with single-pass algorithm.
     """
     min_key = None
     min_remaining = float("inf")
 
+    # Single pass: find entry with least remaining TTL (only considers entries with TTL set)
     for key in keys:
         entry = backend.get(key)
         if entry and entry.ttl:
@@ -107,18 +143,35 @@ def select_ttl_victim(backend: Any, keys: Set[str]) -> str:
                 min_remaining = remaining
                 min_key = key
 
+    # If no TTL entries found, return arbitrary key; otherwise return min_key
     return min_key if min_key is not None else next(iter(keys))
 
 
 def select_size_victim(backend: Any, keys: Set[str]) -> str:
-    """Select largest entry as victim - O(n) optimized.
+    """Select the largest cache entry (by size) as eviction victim.
 
-    Avoids intermediate list construction by using in-place comparison
-    while caching backend.get() results to avoid redundant calls.
+    Chooses the cache entry with the largest size attribute. This strategy is
+    useful for freeing maximum space quickly, as removing one large entry may
+    provide enough room for multiple smaller entries. Uses a single-pass
+    algorithm with in-place comparison for efficiency.
+
+    Args:
+        backend: Cache backend with get(key) method returning entries with
+            size attribute (integer representing memory/storage size in bytes).
+        keys: Set of candidate cache keys to consider for eviction. Must not
+            be empty.
+
+    Returns:
+        The key of the largest entry. If no valid entries are found, returns
+        an arbitrary key from the input set.
+
+    Complexity:
+        O(n) where n is the number of keys, optimized with single-pass algorithm.
     """
     max_key = None
     max_size = 0
 
+    # Single pass: track maximum size and corresponding key
     for key in keys:
         entry = backend.get(key)
         if entry:
@@ -126,14 +179,32 @@ def select_size_victim(backend: Any, keys: Set[str]) -> str:
                 max_size = entry.size
                 max_key = key
 
+    # If no valid entries found, return arbitrary key; otherwise return max_key
     return max_key if max_key is not None else next(iter(keys))
 
 
 def select_fifo_victim(backend: Any, keys: Set[str]) -> str:
-    """First-In-First-Out (oldest creation time) victim selection - O(1) for OrderedDict.
+    """Select the oldest cache entry (FIFO) as eviction victim.
 
-    For OrderedDict-based backends that maintain insertion order, this is O(1).
-    First key is the oldest (first inserted).
+    Chooses the cache entry with the oldest created_at timestamp. This implements
+    a First-In-First-Out (FIFO) queue eviction policy, where the oldest entry is
+    always evicted first. For OrderedDict-based backends that maintain insertion
+    order, this is O(1) as the first key is always the oldest. Otherwise falls
+    back to O(n) scan of all entries.
+
+    Args:
+        backend: Cache backend with get(key) method returning entries with
+            created_at attribute (datetime). For O(1) performance, backend should
+            have an OrderedDict _cache attribute that preserves insertion order.
+        keys: Set of candidate cache keys to consider for eviction. Must not
+            be empty.
+
+    Returns:
+        The key of the oldest entry (earliest created_at). If no valid entries
+        are found, returns an arbitrary key from the input set.
+
+    Complexity:
+        O(1) for OrderedDict backends, O(n) for generic backends.
     """
     # O(1) optimization for OrderedDict-based backends
     if hasattr(backend, '_cache') and isinstance(backend._cache, OrderedDict):
@@ -147,7 +218,9 @@ def select_fifo_victim(backend: Any, keys: Set[str]) -> str:
         if entry:
             entries_with_time.append((entry.created_at, key))
 
+    # If no valid entries found (all None from backend.get), return arbitrary key
     if not entries_with_time:
         return next(iter(keys))
 
+    # min() on tuple compares by first element (created_at), return key at [1]
     return min(entries_with_time)[1]
