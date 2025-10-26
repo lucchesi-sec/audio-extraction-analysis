@@ -56,60 +56,50 @@ def setup_logging(verbose: bool = False) -> None:
     logging.getLogger("src").setLevel(level)
 
 
-def create_parser() -> argparse.ArgumentParser:
-    """Create and configure the argument parser.
+def _add_markdown_export_options(parser: argparse.ArgumentParser) -> None:
+    """Add common markdown export options to a parser.
 
-    Returns:
-        Configured ArgumentParser instance
+    Args:
+        parser: ArgumentParser to add options to
     """
-    parser = argparse.ArgumentParser(
-        prog="audio-extraction-analysis",
-        description="Audio extraction and transcription analysis tool with multiple providers",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""Examples:
-  # Extract audio from video
-  audio-extraction-analysis extract video.mp4 --quality speech
-
-  # Transcribe audio file with auto provider selection
-  audio-extraction-analysis transcribe audio.mp3 --language en
-
-  # Transcribe with specific provider
-  audio-extraction-analysis transcribe audio.mp3 --provider deepgram
-  audio-extraction-analysis transcribe audio.mp3 --provider elevenlabs
-
-  # Full pipeline: video to transcript
-  audio-extraction-analysis process video.mp4 --output-dir ./results
-
-  # With specific provider and verbose logging
-  audio-extraction-analysis process video.mp4 --provider deepgram --verbose
-
-Quality presets:
-  high       - 320k bitrate, best for archival
-  standard   - Variable bitrate, good balance
-  speech     - Mono, normalized, best for transcription (default)
-  compressed - 128k bitrate, smaller files
-
-Transcription providers:
-  deepgram   - Full-featured with speaker diarization, topics, intents, sentiment
-  elevenlabs - Basic transcription with timestamps
-  whisper    - Local OpenAI Whisper processing (no API key needed)
-  auto       - Automatically select best available provider (default)
-
-For more information, see: https://github.com/lucchesi-sec/audio-extraction-analysis
-        """,
-    )
-
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     parser.add_argument(
-        "--json-output",
+        "--export-markdown",
         action="store_true",
-        help="Emit machine-readable JSON events to stderr/stdout",
+        help="Also export a formatted Markdown transcript",
+    )
+    parser.add_argument(
+        "--md-template",
+        dest="md_template",
+        choices=["default", "minimal", "detailed"],
+        default="default",
+        help="Markdown template to use",
+    )
+    parser.add_argument(
+        "--md-no-timestamps",
+        dest="md_include_timestamps",
+        action="store_false",
+        help="Exclude timestamps in Markdown output",
+    )
+    parser.add_argument(
+        "--md-no-speakers",
+        dest="md_include_speakers",
+        action="store_false",
+        help="Exclude speaker labels in Markdown output",
+    )
+    parser.add_argument(
+        "--md-confidence",
+        dest="md_include_confidence",
+        action="store_true",
+        help="Include confidence field in Markdown output",
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Available commands", required=True)
 
-    # Extract subcommand
+def _create_extract_subparser(subparsers) -> None:
+    """Create the extract subcommand parser.
+
+    Args:
+        subparsers: Subparsers object to add the extract parser to
+    """
     extract_parser = subparsers.add_parser(
         "extract",
         help="Extract audio from video files",
@@ -127,7 +117,13 @@ For more information, see: https://github.com/lucchesi-sec/audio-extraction-anal
         help="Audio quality preset (default: speech)",
     )
 
-    # Transcribe subcommand
+
+def _create_transcribe_subparser(subparsers) -> None:
+    """Create the transcribe subcommand parser.
+
+    Args:
+        subparsers: Subparsers object to add the transcribe parser to
+    """
     transcribe_parser = subparsers.add_parser(
         "transcribe",
         help="Transcribe audio files using multiple providers",
@@ -147,39 +143,15 @@ For more information, see: https://github.com/lucchesi-sec/audio-extraction-anal
         default="auto",
         help="Transcription provider to use (default: auto)",
     )
-    # Markdown export options for transcribe
-    transcribe_parser.add_argument(
-        "--export-markdown",
-        action="store_true",
-        help="Also export a formatted Markdown transcript into ./output/<name>/",
-    )
-    transcribe_parser.add_argument(
-        "--md-template",
-        dest="md_template",
-        choices=["default", "minimal", "detailed"],
-        default="default",
-        help="Markdown template to use",
-    )
-    transcribe_parser.add_argument(
-        "--md-no-timestamps",
-        dest="md_include_timestamps",
-        action="store_false",
-        help="Exclude timestamps in Markdown output",
-    )
-    transcribe_parser.add_argument(
-        "--md-no-speakers",
-        dest="md_include_speakers",
-        action="store_false",
-        help="Exclude speaker labels in Markdown output",
-    )
-    transcribe_parser.add_argument(
-        "--md-confidence",
-        dest="md_include_confidence",
-        action="store_true",
-        help="Include confidence field in Markdown output",
-    )
+    _add_markdown_export_options(transcribe_parser)
 
-    # Process subcommand (extract + transcribe)
+
+def _create_process_subparser(subparsers) -> None:
+    """Create the process subcommand parser.
+
+    Args:
+        subparsers: Subparsers object to add the process parser to
+    """
     process_parser = subparsers.add_parser(
         "process",
         help="Full pipeline: extract audio and transcribe",
@@ -216,39 +188,15 @@ For more information, see: https://github.com/lucchesi-sec/audio-extraction-anal
             "'full' for 5 detailed files (default: concise)"
         ),
     )
-    # Markdown export options for process
-    process_parser.add_argument(
-        "--export-markdown",
-        action="store_true",
-        help="Also export a formatted Markdown transcript into <output_dir>/<name>/",
-    )
-    process_parser.add_argument(
-        "--md-template",
-        dest="md_template",
-        choices=["default", "minimal", "detailed"],
-        default="default",
-        help="Markdown template to use",
-    )
-    process_parser.add_argument(
-        "--md-no-timestamps",
-        dest="md_include_timestamps",
-        action="store_false",
-        help="Exclude timestamps in Markdown output",
-    )
-    process_parser.add_argument(
-        "--md-no-speakers",
-        dest="md_include_speakers",
-        action="store_false",
-        help="Exclude speaker labels in Markdown output",
-    )
-    process_parser.add_argument(
-        "--md-confidence",
-        dest="md_include_confidence",
-        action="store_true",
-        help="Include confidence field in Markdown output",
-    )
+    _add_markdown_export_options(process_parser)
 
-    # Export markdown subcommand
+
+def _create_export_markdown_subparser(subparsers) -> None:
+    """Create the export-markdown subcommand parser.
+
+    Args:
+        subparsers: Subparsers object to add the export-markdown parser to
+    """
     export_md_parser = subparsers.add_parser(
         "export-markdown",
         help="Transcribe audio and export formatted Markdown transcript",
@@ -313,6 +261,68 @@ For more information, see: https://github.com/lucchesi-sec/audio-extraction-anal
         choices=["default", "minimal", "detailed"],
         help="Markdown template to use",
     )
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create and configure the argument parser.
+
+    Returns:
+        Configured ArgumentParser instance
+    """
+    parser = argparse.ArgumentParser(
+        prog="audio-extraction-analysis",
+        description="Audio extraction and transcription analysis tool with multiple providers",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  # Extract audio from video
+  audio-extraction-analysis extract video.mp4 --quality speech
+
+  # Transcribe audio file with auto provider selection
+  audio-extraction-analysis transcribe audio.mp3 --language en
+
+  # Transcribe with specific provider
+  audio-extraction-analysis transcribe audio.mp3 --provider deepgram
+  audio-extraction-analysis transcribe audio.mp3 --provider elevenlabs
+
+  # Full pipeline: video to transcript
+  audio-extraction-analysis process video.mp4 --output-dir ./results
+
+  # With specific provider and verbose logging
+  audio-extraction-analysis process video.mp4 --provider deepgram --verbose
+
+Quality presets:
+  high       - 320k bitrate, best for archival
+  standard   - Variable bitrate, good balance
+  speech     - Mono, normalized, best for transcription (default)
+  compressed - 128k bitrate, smaller files
+
+Transcription providers:
+  deepgram   - Full-featured with speaker diarization, topics, intents, sentiment
+  elevenlabs - Basic transcription with timestamps
+  whisper    - Local OpenAI Whisper processing (no API key needed)
+  auto       - Automatically select best available provider (default)
+
+For more information, see: https://github.com/lucchesi-sec/audio-extraction-analysis
+        """,
+    )
+
+    # Add global arguments
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--json-output",
+        action="store_true",
+        help="Emit machine-readable JSON events to stderr/stdout",
+    )
+
+    # Create subparsers
+    subparsers = parser.add_subparsers(dest="command", help="Available commands", required=True)
+
+    # Add all subcommands using helper functions
+    _create_extract_subparser(subparsers)
+    _create_transcribe_subparser(subparsers)
+    _create_process_subparser(subparsers)
+    _create_export_markdown_subparser(subparsers)
 
     return parser
 

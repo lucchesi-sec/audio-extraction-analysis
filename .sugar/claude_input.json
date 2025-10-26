@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Refactor large functions in export_markdown_command.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/commands/export_markdown_command.py**\nIssue Type: long_function\nSeverity: medium\nLine: 18\n\n**Description:** Function 'export_markdown_command' is 99 lines long\n**Suggested Action:** Consider breaking down export_markdown_command into smaller functions",
+  "title": "Refactor large functions in cli_utils.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/commands/cli_utils.py**\nIssue Type: long_function\nSeverity: medium\nLine: 27\n\n**Description:** Function 'create_parser' is 258 lines long\n**Suggested Action:** Consider breaking down create_parser into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "1087ccc3-3d45-417d-9c0d-f62dc7f0f0f1",
+    "work_item_id": "216e81d3-6289-44d6-a556-57c0e6f16d7c",
     "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
@@ -17,15 +17,15 @@
       "quality_issue": {
         "type": "long_function",
         "severity": "medium",
-        "line": 18,
-        "description": "Function 'export_markdown_command' is 99 lines long",
-        "suggestion": "Consider breaking down export_markdown_command into smaller functions"
+        "line": 27,
+        "description": "Function 'create_parser' is 258 lines long",
+        "suggestion": "Consider breaking down create_parser into smaller functions"
       },
-      "discovered_at": "2025-10-26T16:49:45.670765",
+      "discovered_at": "2025-10-26T16:49:45.674946",
       "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T18:05:53.921878",
+  "timestamp": "2025-10-26T18:08:42.304425",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
