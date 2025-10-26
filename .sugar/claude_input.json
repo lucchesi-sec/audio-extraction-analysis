@@ -1,12 +1,12 @@
 {
-  "task_type": "refactor",
-  "title": "Code review and optimization for export_markdown_command.py",
-  "description": "Review ./src/commands/export_markdown_command.py for potential improvements: code clarity, performance, error handling, and best practices.",
+  "task_type": "documentation",
+  "title": "Review and improve documentation in test_audio_extraction.py",
+  "description": "Review the documentation and comments in ./tests/unit/test_audio_extraction.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "6fd75af8-b9b4-43bd-a387-32c2965efd5d",
+    "work_item_id": "93f455d9-f195-4d64-ac4f-26fb2a671378",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "refactor",
-      "discovered_at": "2025-10-26T17:02:38.657929",
+      "task_type": "documentation",
+      "discovered_at": "2025-10-26T17:12:22.282502",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:16:24.256594",
+  "timestamp": "2025-10-26T19:16:34.463653",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
