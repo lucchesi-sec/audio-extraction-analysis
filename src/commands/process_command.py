@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from ..pipeline.audio_pipeline import AudioProcessingPipeline
+from ..pipeline.simple_pipeline import process_pipeline
 from ..services.audio_extraction import AudioQuality
 from ..ui.console import ConsoleManager
 from .transcribe_command import export_markdown_transcript
@@ -54,40 +54,26 @@ def process_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
             f"Processing video {input_path} (quality: {quality.value}, provider: {args.provider})"
         )
 
-        # Use async pipeline with progress bars (prefer class from src.cli for legacy patching)
-        from .. import cli as cli_module
-
-        pipeline_cls = getattr(cli_module, "AudioProcessingPipeline", AudioProcessingPipeline)
-        pipeline = pipeline_cls(console_manager=console_manager)
+        # Use simplified linear pipeline
         try:
-            if hasattr(pipeline, "process_video"):
-                # Legacy synchronous pipeline path expected by older tests
-                result = pipeline.process_video(
+            pipeline_result = asyncio.run(
+                process_pipeline(
                     input_path=str(input_path),
                     output_dir=str(output_dir),
-                    quality=quality.value if hasattr(quality, "value") else quality,
-                    provider=args.provider,
+                    quality=quality,
                     language=args.language,
+                    provider=args.provider,
+                    analysis_style=args.analysis_style,
+                    console_manager=console_manager,
                 )
-                pipeline_result = {"success": result is not None, "transcript": result}
-            else:
-                # Use async method with progress bars
-                pipeline_result = asyncio.run(
-                    pipeline.process_file(
-                        input_path=str(input_path),
-                        output_dir=str(output_dir),
-                        quality=quality,  # Pass the enum object
-                        language=args.language,
-                        provider=args.provider,
-                        analysis_style=args.analysis_style,
-                    )
-                )
+            )
 
-                # Extract the transcription result from pipeline results
-                if pipeline_result.get("success", False):
-                    result = pipeline_result.get("transcript")  # TranscriptionResult object
-                else:
-                    result = None
+            # Extract the transcription result from pipeline results
+            if pipeline_result.get("success", False):
+                result = pipeline_result.get("transcript")
+            else:
+                result = None
+
             if not pipeline_result.get("success", False):
                 errors = pipeline_result.get("errors", ["Unknown error"])
                 logger.error(f"Pipeline processing failed: {', '.join(errors)}")
@@ -99,7 +85,6 @@ def process_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
                         "stages_completed": pipeline_result.get("stages_completed"),
                         "files_created": pipeline_result.get("files_created"),
                         "audio_path": pipeline_result.get("audio_path"),
-                        "debug_path": pipeline_result.get("debug_path"),
                     }
                     try:
                         logger.error("Pipeline diagnostics: %s", json.dumps(diag, default=str))

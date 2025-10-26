@@ -1,12 +1,12 @@
 {
   "task_type": "feature",
-  "title": "Consolidate Parakeet provider into single file",
-  "description": "{\n  \"priority\": 4,\n  \"type\": \"refactor\",\n  \"context\": \"Merge 5 Parakeet files into single parakeet.py (~420 LOC). Currently split across parakeet.py, parakeet_core.py, parakeet_audio.py, parakeet_cache.py, parakeet_gpu.py. Other providers are single files.\",\n  \"business_context\": \"Consistency with other providers (Deepgram, Whisper, ElevenLabs). Reduces abstractions.\",\n  \"technical_requirements\": [\n    \"Merge all parakeet_*.py files into single parakeet.py\",\n    \"Use shared cache system instead of provider-specific\",\n    \"Maintain all GPU optimization features\",\n    \"Maintain all audio preprocessing\",\n    \"Update imports in transcription service\",\n    \"Run Parakeet provider tests\"\n  ],\n  \"success_criteria\": [\n    \"Single src/providers/parakeet.py file\",\n    \"All Parakeet functionality preserved\",\n    \"Tests pass\",\n    \"~80 LOC reduction from abstraction removal\"\n  ]\n}",
+  "title": "Simplify pipeline to linear execution",
+  "description": "{\n  \"priority\": 4,\n  \"type\": \"refactor\",\n  \"context\": \"Replace complex pipeline orchestration with simple linear function. Current: dual orchestration (pipeline/ + orchestration/). Reality: always extract \u2192 transcribe \u2192 analyze.\",\n  \"business_context\": \"1,500 LOC reduction. Eliminates unnecessary DAG complexity for linear 3-step process.\",\n  \"technical_requirements\": [\n    \"Create simple process_pipeline() function (150 LOC)\",\n    \"Replace WorkflowEngine with direct function calls\",\n    \"Remove dual sync/async paths (keep async only)\",\n    \"Update CLI commands to use new pipeline\",\n    \"Maintain all error handling\",\n    \"Run integration tests\"\n  ],\n  \"success_criteria\": [\n    \"Simple linear pipeline execution\",\n    \"All pipeline tests pass\",\n    \"CLI commands work correctly\",\n    \"1,500 LOC reduction achieved\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "58d05759-d829-42da-b9d5-f35329101e1e",
+    "work_item_id": "47b67d63-c0a1-4c07-a347-e7e980e3d23c",
     "source_type": "cli",
     "priority": 3,
     "attempts": 1,
@@ -15,31 +15,31 @@
     "previous_attempts": null,
     "session_context": {
       "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:45:02.862743",
+      "timestamp": "2025-10-26T16:45:04.127369",
       "parsed_description": {
         "priority": 4,
         "type": "refactor",
-        "context": "Merge 5 Parakeet files into single parakeet.py (~420 LOC). Currently split across parakeet.py, parakeet_core.py, parakeet_audio.py, parakeet_cache.py, parakeet_gpu.py. Other providers are single files.",
-        "business_context": "Consistency with other providers (Deepgram, Whisper, ElevenLabs). Reduces abstractions.",
+        "context": "Replace complex pipeline orchestration with simple linear function. Current: dual orchestration (pipeline/ + orchestration/). Reality: always extract \u2192 transcribe \u2192 analyze.",
+        "business_context": "1,500 LOC reduction. Eliminates unnecessary DAG complexity for linear 3-step process.",
         "technical_requirements": [
-          "Merge all parakeet_*.py files into single parakeet.py",
-          "Use shared cache system instead of provider-specific",
-          "Maintain all GPU optimization features",
-          "Maintain all audio preprocessing",
-          "Update imports in transcription service",
-          "Run Parakeet provider tests"
+          "Create simple process_pipeline() function (150 LOC)",
+          "Replace WorkflowEngine with direct function calls",
+          "Remove dual sync/async paths (keep async only)",
+          "Update CLI commands to use new pipeline",
+          "Maintain all error handling",
+          "Run integration tests"
         ],
         "success_criteria": [
-          "Single src/providers/parakeet.py file",
-          "All Parakeet functionality preserved",
-          "Tests pass",
-          "~80 LOC reduction from abstraction removal"
+          "Simple linear pipeline execution",
+          "All pipeline tests pass",
+          "CLI commands work correctly",
+          "1,500 LOC reduction achieved"
         ]
       },
       "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:02:39.222849",
+  "timestamp": "2025-10-26T17:04:18.805896",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

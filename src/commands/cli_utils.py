@@ -4,8 +4,6 @@ from __future__ import annotations
 import argparse
 import logging
 
-from ..config.factory import ConfigFactory, ConfigType
-
 __version__ = "1.0.0+emergency"
 
 logger = logging.getLogger(__name__)

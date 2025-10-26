@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-from ..config.factory import ConfigFactory, ConfigType
 from ..services.transcription import TranscriptionService
 from ..ui.console import ConsoleManager
 from ..utils.file_validation import ValidationError, validate_audio_file
