@@ -1,12 +1,12 @@
 {
   "task_type": "test",
-  "title": "Add tests for __init__.py",
-  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/analysis/__init__.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
+  "title": "Add tests for ffmpeg_utils.py",
+  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/utils/ffmpeg_utils.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "f97bec53-6785-4e31-b739-40e460103c5a",
+    "work_item_id": "36b6310a-6827-4e36-9519-e2acc75375e8",
     "source_type": "test_coverage",
     "priority": 3,
     "attempts": 1,
@@ -17,12 +17,12 @@
       "test_analysis": {
         "work_type": "missing_tests",
         "details": {},
-        "discovered_at": "2025-10-26T16:49:45.794459",
+        "discovered_at": "2025-10-26T16:49:45.794474",
         "source_type": "test_coverage"
       }
     }
   },
-  "timestamp": "2025-10-26T18:20:52.681813",
+  "timestamp": "2025-10-26T18:20:59.736175",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
