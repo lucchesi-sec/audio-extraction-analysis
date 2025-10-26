@@ -1,28 +1,26 @@
 {
-  "task_type": "test",
-  "title": "Add tests for paths.py",
-  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/utils/paths.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
+  "task_type": "documentation",
+  "title": "Review and improve documentation in whisper.py",
+  "description": "Review the documentation and comments in ./src/config/providers/whisper.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "c4e4969a-6fbb-48cd-a473-b7e863c6391e",
-    "source_type": "test_coverage",
-    "priority": 3,
+    "work_item_id": "6aff682e-5abf-4900-b970-aa3d2a7d7a92",
+    "source_type": "maintenance_generator",
+    "priority": 2,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "test_analysis": {
-        "work_type": "missing_tests",
-        "details": {},
-        "discovered_at": "2025-10-26T18:43:18.262844",
-        "source_type": "test_coverage"
-      }
+      "maintenance_task": true,
+      "task_type": "documentation",
+      "discovered_at": "2025-10-26T16:49:45.324012",
+      "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T18:49:50.604424",
+  "timestamp": "2025-10-26T18:52:26.969463",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
