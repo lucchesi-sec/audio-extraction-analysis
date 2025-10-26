@@ -1,4 +1,25 @@
-"""Centralized logging factory for consistent logger creation across the application."""
+"""Centralized logging factory for consistent logger creation across the application.
+
+This module provides a singleton-based logging factory that ensures consistent
+logger configuration throughout the application. It handles:
+- Automatic initialization of the logging system
+- Centralized log file management
+- Consistent formatting across all loggers
+- Per-module logging level configuration
+- Easy verbosity control for debugging
+
+Usage:
+    # Explicit initialization (optional - auto-initializes on first use)
+    LoggingFactory.initialize(log_dir=Path("logs"), level=logging.INFO)
+
+    # Get a logger for your module
+    logger = LoggingFactory.get_logger(__name__)
+    logger.info("Application started")
+
+    # Or use the convenience function
+    from utils.logging_factory import get_logger
+    logger = get_logger(__name__)
+"""
 from __future__ import annotations
 
 import logging
@@ -7,10 +28,26 @@ from typing import Optional
 
 
 class LoggingFactory:
-    """Factory for creating and configuring loggers consistently."""
+    """Factory for creating and configuring loggers consistently.
 
-    _initialized = False
-    _log_dir = Path("logs")
+    This class implements a singleton pattern for logging configuration,
+    ensuring that the logging system is initialized only once regardless
+    of how many times initialize() is called.
+
+    The factory provides:
+    - Automatic creation of log directory
+    - Dual output to both file (app.log) and console
+    - Consistent formatting across all loggers
+    - Per-module logging level control
+    - Lazy initialization (auto-initializes on first get_logger call)
+
+    Class Attributes:
+        _initialized: Flag to ensure single initialization
+        _log_dir: Directory path where log files are stored
+    """
+
+    _initialized = False  # Tracks whether logging system has been configured
+    _log_dir = Path("logs")  # Default directory for log file storage
 
     @classmethod
     def initialize(
@@ -21,10 +58,29 @@ class LoggingFactory:
     ) -> None:
         """Initialize the logging system once for the entire application.
 
+        This method uses a singleton pattern - it only performs initialization
+        on the first call and ignores subsequent calls. It configures:
+        - Root logger with the specified level
+        - Dual output handlers (file and console)
+        - Log file directory creation
+        - Module-specific logging levels (transcription=DEBUG, audio_extraction=INFO)
+
+        Note: Calling this method is optional. The factory will auto-initialize
+        with defaults when get_logger() is first called.
+
         Args:
-            log_dir: Directory for log files (default: "logs")
-            level: Default logging level
-            format_string: Custom format string for log messages
+            log_dir: Directory for log files. If None, uses "logs" in current directory.
+            level: Default logging level for root logger (default: logging.INFO).
+                   Valid values: logging.DEBUG, logging.INFO, logging.WARNING,
+                   logging.ERROR, logging.CRITICAL
+            format_string: Custom format string for log messages. If None, uses:
+                          "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+        Side Effects:
+            - Creates log_dir if it doesn't exist
+            - Configures root logger with file and console handlers
+            - Sets specific levels for 'transcription' and 'audio_extraction' loggers
+            - Sets _initialized flag to prevent re-initialization
         """
         if cls._initialized:
             return
@@ -56,13 +112,26 @@ class LoggingFactory:
     def get_logger(cls, name: str) -> logging.Logger:
         """Get a configured logger for the given module name.
 
+        This method automatically initializes the logging system with default
+        settings if initialize() has not been called explicitly. This lazy
+        initialization ensures logging works without manual setup.
+
+        Best Practice: Use __name__ as the logger name to identify the source module.
+
         Args:
-            name: Module name for the logger
+            name: Module name for the logger. Typically __name__ for automatic
+                  module identification, or a custom string for component-specific
+                  loggers (e.g., 'transcription', 'audio_extraction').
 
         Returns:
-            Configured logger instance
+            Configured logger instance ready for use.
+
+        Example:
+            logger = LoggingFactory.get_logger(__name__)
+            logger.info("Starting process")
+            logger.debug("Debug information")
         """
-        # Auto-initialize if not done yet
+        # Auto-initialize with defaults if not explicitly initialized
         if not cls._initialized:
             cls.initialize()
 

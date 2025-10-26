@@ -141,7 +141,10 @@ class TestE2ETestRunnerInit:
     def test_runner_creates_output_directory(self, mock_args):
         """Test runner creates output directory if it doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "nonexistent" / "output"
+            # Create parent directory first as mkdir(exist_ok=True) doesn't create parents
+            parent_path = Path(tmpdir) / "nonexistent"
+            parent_path.mkdir(exist_ok=True)
+            output_path = parent_path / "output"
             mock_args.output_dir = str(output_path)
 
             runner = E2ETestRunner(mock_args)

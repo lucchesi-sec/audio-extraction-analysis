@@ -589,8 +589,12 @@ class E2ETestRunner:
         total_tests = sum(r.tests_passed + r.tests_failed + r.tests_skipped for r in report.suite_results)
         total_passed = sum(r.tests_passed for r in report.suite_results)
         total_failed = sum(r.tests_failed for r in report.suite_results)
-        
-        print(f"Tests: {total_passed}/{total_tests} passed ({total_passed/total_tests*100:.1f}%)")
+
+        if total_tests > 0:
+            pass_rate = total_passed / total_tests * 100
+            print(f"Tests: {total_passed}/{total_tests} passed ({pass_rate:.1f}%)")
+        else:
+            print(f"Tests: {total_passed}/{total_tests} passed (N/A)")
         
         print("\nSuite Results:")
         for result in report.suite_results:
