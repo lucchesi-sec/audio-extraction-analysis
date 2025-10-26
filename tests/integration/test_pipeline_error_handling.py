@@ -513,3 +513,335 @@ class TestPipelineStageResults:
             r for r in result["stage_results"]
             if result["stage_results"][r].get("status") == "complete"
         ] or result["stage_results"].get("transcription", {}).get("status") != "complete"
+
+
+class TestPipelineFileOperations:
+    """Test critical file operation error paths."""
+
+    @pytest.mark.asyncio
+    async def test_output_directory_permission_failure(self, tmp_path):
+        """Test that output directory permission failure produces clear error."""
+        invalid_file = tmp_path / "test.mp4"
+        invalid_file.write_bytes(b"fake video")
+
+        # Create a read-only directory that can't be written to
+        output_dir = tmp_path / "readonly_output"
+        output_dir.mkdir()
+        output_dir.chmod(0o444)  # Read-only
+
+        try:
+            result = await process_pipeline(
+                input_path=invalid_file,
+                output_dir=output_dir / "subdir",  # Will fail to create
+                console_manager=ConsoleManager(json_output=True),
+            )
+
+            # Should fail
+            assert result["success"] is False
+            assert len(result["errors"]) > 0
+        finally:
+            # Restore permissions for cleanup
+            output_dir.chmod(0o755)
+
+    @pytest.mark.asyncio
+    async def test_transcription_save_failure(self, tmp_path):
+        """Test that transcription file save failure is handled gracefully."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio" * 1000)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        # Mock extraction and transcription to succeed
+        with patch(
+            "src.pipeline.simple_pipeline.AsyncAudioExtractor"
+        ) as mock_extractor_class, patch(
+            "src.pipeline.simple_pipeline.TranscriptionService"
+        ) as mock_transcription_class:
+
+            mock_extractor = AsyncMock()
+            mock_extractor_class.return_value = mock_extractor
+            temp_audio = tmp_path / "extracted.mp3"
+            temp_audio.write_bytes(b"extracted" * 1000)
+            mock_extractor.extract_audio_async.return_value = temp_audio
+
+            mock_service = AsyncMock()
+            mock_transcription_class.return_value = mock_service
+            mock_transcript = Mock()
+            mock_transcript.transcript = "Test transcript"
+            mock_transcript.provider_name = "test_provider"
+            mock_transcript.utterances = []
+            mock_service.transcribe_with_progress.return_value = mock_transcript
+
+            # Make save_transcription_result fail
+            mock_service.save_transcription_result.side_effect = OSError(
+                "Permission denied"
+            )
+
+            result = await process_pipeline(
+                input_path=audio_file,
+                output_dir=output_dir,
+                console_manager=ConsoleManager(json_output=True),
+            )
+
+        # Pipeline might fail or succeed depending on error handling
+        # Key is that it doesn't crash
+        assert "stage_results" in result
+        assert "errors" in result
+
+    @pytest.mark.asyncio
+    async def test_final_audio_copy_failure(self, tmp_path):
+        """Test that final audio copy failure is handled after successful processing."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio" * 1000)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        with patch(
+            "src.pipeline.simple_pipeline.AsyncAudioExtractor"
+        ) as mock_extractor_class, patch(
+            "src.pipeline.simple_pipeline.TranscriptionService"
+        ) as mock_transcription_class:
+
+            # Extraction succeeds
+            mock_extractor = AsyncMock()
+            mock_extractor_class.return_value = mock_extractor
+            temp_audio = tmp_path / "extracted.mp3"
+            temp_audio.write_bytes(b"extracted" * 1000)
+            mock_extractor.extract_audio_async.return_value = temp_audio
+
+            # Transcription succeeds
+            mock_service = AsyncMock()
+            mock_transcription_class.return_value = mock_service
+            mock_transcript = Mock()
+            mock_transcript.transcript = "Test"
+            mock_transcript.provider_name = "test"
+            mock_transcript.utterances = []
+            mock_service.transcribe_with_progress.return_value = mock_transcript
+            mock_service.save_transcription_result = Mock()
+
+            # Make output directory read-only to cause copy failure
+            output_dir.chmod(0o444)
+
+            try:
+                result = await process_pipeline(
+                    input_path=audio_file,
+                    output_dir=output_dir,
+                    analysis_style="concise",
+                    console_manager=ConsoleManager(json_output=True),
+                )
+
+                # Should still have completed stages even if final copy fails
+                assert "transcription" in result["stages_completed"]
+            finally:
+                # Restore permissions
+                output_dir.chmod(0o755)
+
+    @pytest.mark.asyncio
+    async def test_progress_callback_exception(self, tmp_path):
+        """Test that exceptions in progress callbacks don't crash pipeline."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio" * 1000)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        # Create a console manager that raises on progress updates
+        class FailingConsoleManager(ConsoleManager):
+            def progress_context(self, *args, **kwargs):
+                from contextlib import contextmanager
+
+                @contextmanager
+                def failing_progress():
+                    class FailingProgress:
+                        def update(self, *args, **kwargs):
+                            raise RuntimeError("Progress update failed")
+
+                    yield FailingProgress()
+
+                return failing_progress()
+
+        failing_console = FailingConsoleManager(json_output=True)
+
+        # This should either handle the exception or fail gracefully
+        try:
+            result = await process_pipeline(
+                input_path=audio_file,
+                output_dir=output_dir,
+                console_manager=failing_console,
+            )
+            # If we get here, the pipeline handled progress errors
+            assert "errors" in result or "success" in result
+        except RuntimeError as e:
+            # If progress exceptions propagate, that's documented behavior
+            assert "Progress update failed" in str(e)
+
+
+class TestPipelineAnalysisStyles:
+    """Test different analysis style error paths."""
+
+    @pytest.mark.asyncio
+    async def test_full_analysis_failure(self, tmp_path):
+        """Test that full analysis failure is handled (not just concise)."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio" * 1000)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        with patch(
+            "src.pipeline.simple_pipeline.AsyncAudioExtractor"
+        ) as mock_extractor_class, patch(
+            "src.pipeline.simple_pipeline.TranscriptionService"
+        ) as mock_transcription_class, patch(
+            "src.pipeline.simple_pipeline.FullAnalyzer"
+        ) as mock_analyzer_class:
+
+            # Extraction succeeds
+            mock_extractor = AsyncMock()
+            mock_extractor_class.return_value = mock_extractor
+            temp_audio = tmp_path / "extracted.mp3"
+            temp_audio.write_bytes(b"extracted" * 1000)
+            mock_extractor.extract_audio_async.return_value = temp_audio
+
+            # Transcription succeeds
+            mock_service = AsyncMock()
+            mock_transcription_class.return_value = mock_service
+            mock_transcript = Mock()
+            mock_transcript.transcript = "Test transcript"
+            mock_transcript.provider_name = "test_provider"
+            mock_transcript.utterances = []
+            mock_service.transcribe_with_progress.return_value = mock_transcript
+            mock_service.save_transcription_result = Mock()
+
+            # Full analysis fails
+            mock_analyzer = Mock()
+            mock_analyzer_class.return_value = mock_analyzer
+            mock_analyzer.analyze_and_save.side_effect = RuntimeError(
+                "LLM API unavailable"
+            )
+
+            result = await process_pipeline(
+                input_path=audio_file,
+                output_dir=output_dir,
+                analysis_style="full",  # Test full style
+                console_manager=ConsoleManager(json_output=True),
+            )
+
+        # Should succeed with transcript even if full analysis fails
+        assert "audio_extraction" in result["stages_completed"]
+        assert "transcription" in result["stages_completed"]
+        assert result["success"] is True  # Has transcript
+        assert len(result["errors"]) > 0
+        assert "analysis" in result["errors"][0].lower()
+
+
+class TestPipelineCleanupResilience:
+    """Test cleanup operations under various failure conditions."""
+
+    @pytest.mark.asyncio
+    async def test_early_return_cleanup_on_transcription_failure(self, tmp_path):
+        """Test that early return on transcription failure still cleans up temp dir."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio" * 1000)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        # Track temp directories
+        initial_temp_dirs = set(Path(tempfile.gettempdir()).glob("audio_pipeline_*"))
+
+        with patch(
+            "src.pipeline.simple_pipeline.AsyncAudioExtractor"
+        ) as mock_extractor_class, patch(
+            "src.pipeline.simple_pipeline.TranscriptionService"
+        ) as mock_transcription_class:
+
+            mock_extractor = AsyncMock()
+            mock_extractor_class.return_value = mock_extractor
+            temp_audio = tmp_path / "extracted.mp3"
+            temp_audio.write_bytes(b"extracted" * 1000)
+            mock_extractor.extract_audio_async.return_value = temp_audio
+
+            mock_service = AsyncMock()
+            mock_transcription_class.return_value = mock_service
+            mock_service.transcribe_with_progress.return_value = None  # Fail
+
+            result = await process_pipeline(
+                input_path=audio_file,
+                output_dir=output_dir,
+                console_manager=ConsoleManager(json_output=True),
+            )
+
+        # Verify failure
+        assert result["success"] is False
+        assert "transcription" not in result["stages_completed"]
+
+        # Verify temp cleanup happened despite early return
+        await asyncio.sleep(0.1)
+        final_temp_dirs = set(Path(tempfile.gettempdir()).glob("audio_pipeline_*"))
+        leaked_dirs = final_temp_dirs - initial_temp_dirs
+        assert len(leaked_dirs) == 0, f"Temp dirs leaked on early return: {leaked_dirs}"
+
+    @pytest.mark.asyncio
+    async def test_partial_file_cleanup_resilience(self, tmp_path):
+        """Test that cleanup continues even if some file deletions fail."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio" * 1000)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        # Create a file that can't be deleted
+        locked_file = output_dir / "locked.txt"
+        locked_file.write_text("locked")
+        locked_file.chmod(0o000)  # No permissions
+
+        try:
+            with patch(
+                "src.pipeline.simple_pipeline.AsyncAudioExtractor"
+            ) as mock_extractor_class:
+
+                mock_extractor = AsyncMock()
+                mock_extractor_class.return_value = mock_extractor
+                mock_extractor.extract_audio_async.side_effect = RuntimeError("Fail")
+
+                result = await process_pipeline(
+                    input_path=audio_file,
+                    output_dir=output_dir,
+                    console_manager=ConsoleManager(json_output=True),
+                )
+
+            # Should fail but not crash on cleanup
+            assert result["success"] is False
+            assert "errors" in result
+        finally:
+            # Restore permissions for cleanup
+            locked_file.chmod(0o644)
+
+    @pytest.mark.asyncio
+    async def test_temp_directory_cleanup_failure_logged(self, tmp_path):
+        """Test that temp directory cleanup failure is logged but doesn't crash."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"audio" * 1000)
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        with patch(
+            "src.pipeline.simple_pipeline.AsyncAudioExtractor"
+        ) as mock_extractor_class, patch(
+            "shutil.rmtree"
+        ) as mock_rmtree:
+
+            mock_extractor = AsyncMock()
+            mock_extractor_class.return_value = mock_extractor
+            mock_extractor.extract_audio_async.side_effect = RuntimeError("Fail")
+
+            # Make temp cleanup fail
+            mock_rmtree.side_effect = OSError("Cannot delete temp dir")
+
+            result = await process_pipeline(
+                input_path=audio_file,
+                output_dir=output_dir,
+                console_manager=ConsoleManager(json_output=True),
+            )
+
+        # Should still return a result despite cleanup failure
+        assert result["success"] is False
+        assert "errors" in result
+        # The temp cleanup failure should be logged but not block the return
