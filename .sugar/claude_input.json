@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in whisper.py",
-  "description": "Review the documentation and comments in ./src/config/providers/whisper.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in security_check.py",
+  "description": "Review the documentation and comments in ./scripts/security_check.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "6aff682e-5abf-4900-b970-aa3d2a7d7a92",
+    "work_item_id": "f6b3d065-c966-4348-ab53-6a0db75f8249",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T16:49:45.324012",
+      "discovered_at": "2025-10-26T16:49:45.324026",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T18:52:26.969463",
+  "timestamp": "2025-10-26T18:52:28.668665",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

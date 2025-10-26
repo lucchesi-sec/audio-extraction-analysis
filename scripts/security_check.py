@@ -1,8 +1,28 @@
 #!/usr/bin/env python3
 """Security check script to validate critical fixes have been applied.
 
-Run this script to verify all critical security issues have been addressed
-before deploying to production.
+This script performs comprehensive security audits on the codebase to identify
+potential vulnerabilities before production deployment. It runs both static
+analysis checks and integrates with external security tools.
+
+Security Checks Performed:
+    - SQL injection vulnerabilities
+    - Unsafe pickle deserialization
+    - Subprocess shell injection risks
+    - Hardcoded secrets and credentials
+    - Poor exception handling patterns
+    - Resource cleanup issues
+
+External Tools Integration:
+    - Bandit: Python security linter
+    - Safety: Dependency vulnerability scanner
+
+Usage:
+    python scripts/security_check.py
+
+Exit Codes:
+    0: All security checks passed
+    1: Security issues found, deployment blocked
 """
 
 import ast
@@ -21,19 +41,48 @@ RESET = "\033[0m"
 
 
 class SecurityChecker:
-    """Check for security vulnerabilities in the codebase."""
-    
+    """Automated security vulnerability scanner for Python codebases.
+
+    Performs static analysis to identify common security issues including
+    SQL injection, unsafe deserialization, shell injection, hardcoded secrets,
+    poor error handling, and resource leaks.
+
+    Attributes:
+        project_root: Root directory of the project to scan
+        src_dir: Source code directory (project_root/src)
+        issues: List of critical security issues found
+        warnings: List of non-critical security warnings
+
+    Example:
+        >>> checker = SecurityChecker(Path('/path/to/project'))
+        >>> passed, issues, warnings = checker.run_all_checks()
+        >>> if not passed:
+        ...     print(f"Found {len(issues)} critical issues")
+    """
+
     def __init__(self, project_root: Path):
+        """Initialize the security checker.
+
+        Args:
+            project_root: Path to the project root directory
+        """
         self.project_root = project_root
         self.src_dir = project_root / "src"
         self.issues: List[Dict] = []
         self.warnings: List[Dict] = []
         
     def run_all_checks(self) -> Tuple[bool, List[Dict], List[Dict]]:
-        """Run all security checks.
-        
+        """Execute all security checks on the codebase.
+
+        Runs comprehensive security analysis including SQL injection detection,
+        unsafe pickle usage, subprocess vulnerabilities, hardcoded secrets,
+        exception handling issues, and resource cleanup problems.
+
         Returns:
-            Tuple of (all_passed, critical_issues, warnings)
+            Tuple containing:
+                - all_passed (bool): True if no critical issues found
+                - critical_issues (List[Dict]): List of critical security issues
+                - warnings (List[Dict]): List of non-critical warnings
         """
         print(f"{BLUE}Starting Security Audit...{RESET}\n")
         
@@ -50,17 +99,30 @@ class SecurityChecker:
         return all_passed, self.issues, self.warnings
     
     def check_sql_injection(self) -> None:
-        """Check for SQL injection vulnerabilities."""
+        """Detect potential SQL injection vulnerabilities.
+
+        Scans for unsafe SQL query construction patterns including:
+        - f-strings in SQL queries
+        - Percent (%) formatting in SQL
+        - String .format() in SQL
+        - String concatenation in SQL WHERE clauses
+
+        These patterns indicate user input may be directly interpolated
+        into SQL queries without proper parameterization.
+        """
         print(f"Checking for SQL injection vulnerabilities...")
         
+        # Regex patterns detecting unsafe SQL construction methods
+        # These patterns look for dynamic SQL with user input interpolation
         sql_patterns = [
-            r'f".*SELECT.*WHERE.*{',  # f-string in SQL
-            r"f'.*SELECT.*WHERE.*{",  # f-string in SQL
-            r'%.*SELECT.*WHERE.*%',   # % formatting in SQL
-            r'\.format\(.*SELECT.*WHERE',  # .format() in SQL
-            r'\+.*SELECT.*WHERE.*\+',  # String concatenation in SQL
+            r'f".*SELECT.*WHERE.*{',  # f-string in SQL (e.g., f"SELECT * WHERE id={user_id}")
+            r"f'.*SELECT.*WHERE.*{",  # f-string in SQL with single quotes
+            r'%.*SELECT.*WHERE.*%',   # % formatting in SQL (e.g., "SELECT * WHERE id=%s" % user_id)
+            r'\.format\(.*SELECT.*WHERE',  # .format() in SQL (e.g., "SELECT * WHERE id={}".format(user_id))
+            r'\+.*SELECT.*WHERE.*\+',  # String concatenation in SQL (e.g., "SELECT * WHERE id=" + user_id)
         ]
         
+        # Scan all Python files in the source directory
         for py_file in self.src_dir.rglob("*.py"):
             content = py_file.read_text()
             for pattern in sql_patterns:
@@ -71,12 +133,21 @@ class SecurityChecker:
                         'severity': 'CRITICAL',
                         'message': 'Potential SQL injection vulnerability'
                     })
-                    break
+                    break  # One issue per file is sufficient
         
         self._print_check_result("SQL Injection", 'SQL_INJECTION')
     
     def check_pickle_usage(self) -> None:
-        """Check for unsafe pickle usage."""
+        """Detect unsafe pickle/dill deserialization patterns.
+
+        Identifies use of pickle.load/loads, cPickle, and dill deserialization
+        without proper validation. Deserializing untrusted data can lead to
+        arbitrary code execution vulnerabilities.
+
+        The check looks for validation patterns (hmac, signature verification,
+        trusted source checks) in surrounding code. If no validation is found,
+        a critical issue is reported.
+        """
         print(f"Checking for unsafe pickle usage...")
         
         pickle_patterns = [
@@ -91,8 +162,9 @@ class SecurityChecker:
             for pattern in pickle_patterns:
                 matches = re.finditer(pattern, content)
                 for match in matches:
-                    # Check if it's deserializing untrusted data
+                    # Calculate line number by counting newlines before the match
                     line_num = content[:match.start()].count('\n') + 1
+                    # Check if pickle usage has security validation in surrounding code
                     if not self._is_pickle_safe(py_file, line_num):
                         self.issues.append({
                             'type': 'UNSAFE_PICKLE',
@@ -105,13 +177,22 @@ class SecurityChecker:
         self._print_check_result("Pickle Usage", 'UNSAFE_PICKLE')
     
     def check_subprocess_shell(self) -> None:
-        """Check for subprocess with shell=True."""
+        """Detect shell injection vulnerabilities in subprocess calls.
+
+        Identifies dangerous patterns:
+        - subprocess calls with shell=True (enables shell injection)
+        - os.system() usage (deprecated and unsafe)
+
+        shell=True allows shell metacharacters in commands, creating
+        injection risks if user input is included. Use subprocess with
+        shell=False and pass commands as lists instead.
+        """
         print(f"Checking for unsafe subprocess calls...")
         
         for py_file in self.src_dir.rglob("*.py"):
             content = py_file.read_text()
             
-            # Check for shell=True
+            # Check for shell=True parameter which enables shell injection
             if 'shell=True' in content:
                 lines = content.split('\n')
                 for i, line in enumerate(lines, 1):
@@ -123,8 +204,8 @@ class SecurityChecker:
                             'severity': 'HIGH',
                             'message': 'subprocess with shell=True is dangerous'
                         })
-            
-            # Check for os.system
+
+            # Check for deprecated os.system() which always uses shell
             if 'os.system(' in content:
                 self.issues.append({
                     'type': 'SHELL_INJECTION',
@@ -136,7 +217,16 @@ class SecurityChecker:
         self._print_check_result("Subprocess Security", 'SHELL_INJECTION')
     
     def check_hardcoded_secrets(self) -> None:
-        """Check for hardcoded secrets."""
+        """Detect hardcoded secrets and API keys in source code.
+
+        Scans for common patterns indicating hardcoded credentials:
+        - api_key, password, secret, token variable assignments
+        - API key patterns (e.g., 'sk-...', 'AIza...')
+
+        Filters out placeholders and references to environment variables
+        to reduce false positives. Secrets should be loaded from environment
+        variables or secure credential stores, never committed to source.
+        """
         print(f"Checking for hardcoded secrets...")
         
         secret_patterns = [
@@ -152,9 +242,10 @@ class SecurityChecker:
             content = py_file.read_text()
             for pattern in secret_patterns:
                 if re.search(pattern, content, re.IGNORECASE):
-                    # Check if it's a real secret or just a placeholder
-                    if not any(placeholder in content for placeholder in 
-                              ['your-api-key', 'your_api_key', '<api_key>', 
+                    # Filter out common placeholders and environment variable references
+                    # to reduce false positives from example code or proper secret management
+                    if not any(placeholder in content for placeholder in
+                              ['your-api-key', 'your_api_key', '<api_key>',
                                'example', 'placeholder', 'getenv', 'environ']):
                         self.warnings.append({
                             'type': 'HARDCODED_SECRET',
@@ -166,7 +257,16 @@ class SecurityChecker:
         self._print_check_result("Hardcoded Secrets", 'HARDCODED_SECRET', check_warnings=True)
     
     def check_exception_handling(self) -> None:
-        """Check for poor exception handling."""
+        """Identify poor exception handling patterns.
+
+        Detects problematic error handling:
+        - Bare except clauses (catches all exceptions including system exits)
+        - Overly broad except Exception
+        - Silent failures (except: pass)
+
+        These patterns can hide bugs, make debugging difficult, and may
+        catch critical system exceptions that should propagate.
+        """
         print(f"Checking exception handling...")
         
         bad_patterns = [
@@ -192,13 +292,23 @@ class SecurityChecker:
         self._print_check_result("Exception Handling", 'POOR_ERROR_HANDLING', check_warnings=True)
     
     def check_resource_cleanup(self) -> None:
-        """Check for resource cleanup issues."""
+        """Detect potential resource leaks from missing cleanup.
+
+        Identifies files opened without context managers (with statements).
+        Files opened without proper cleanup may remain open, causing:
+        - File descriptor leaks
+        - Data corruption from unflushed buffers
+        - Permission lock issues on Windows
+
+        Use 'with open(...)' instead of bare 'open()' assignments.
+        """
         print(f"Checking resource cleanup...")
         
         for py_file in self.src_dir.rglob("*.py"):
             content = py_file.read_text()
             
-            # Check for open() without context manager
+            # Check for open() without context manager (missing 'with' statement)
+            # Pattern matches: var = open(...) but not: with open(...) as var
             if re.search(r'=\s*open\([^)]+\)', content):
                 lines = content.split('\n')
                 for i, line in enumerate(lines, 1):
@@ -214,25 +324,52 @@ class SecurityChecker:
         self._print_check_result("Resource Cleanup", 'RESOURCE_LEAK', check_warnings=True)
     
     def _is_pickle_safe(self, file_path: Path, line_num: int) -> bool:
-        """Check if pickle usage includes validation."""
+        """Determine if pickle usage has proper security validation.
+
+        Examines the context around pickle deserialization (±5 lines) to
+        detect validation mechanisms such as:
+        - HMAC signature verification
+        - Digital signature checks
+        - Explicit validation functions
+        - Trusted source verification
+
+        Args:
+            file_path: Path to the Python file containing pickle usage
+            line_num: Line number where pickle.load/loads is used
+
+        Returns:
+            True if validation is detected in surrounding context, False otherwise
+        """
         content = file_path.read_text()
         lines = content.split('\n')
-        
-        # Check surrounding lines for validation
+
+        # Examine a 10-line window (±5 lines) around the pickle usage
+        # to look for security validation code
         start = max(0, line_num - 5)
         end = min(len(lines), line_num + 5)
-        
+
         context = '\n'.join(lines[start:end])
-        
-        # Look for signs of validation
-        if any(check in context for check in 
+
+        # Look for keywords indicating security validation mechanisms
+        # HMAC, signatures, or explicit validation functions suggest
+        # the data source is authenticated/verified
+        if any(check in context for check in
                ['hmac', 'signature', 'verify', 'validate', 'trusted']):
             return True
-        
+
         return False
     
     def _print_check_result(self, check_name: str, issue_type: str, check_warnings: bool = False) -> None:
-        """Print result of a check."""
+        """Print formatted results for a security check.
+
+        Displays colored output indicating pass/fail status and count
+        of issues or warnings found.
+
+        Args:
+            check_name: Human-readable name of the check (unused, for clarity)
+            issue_type: Type identifier to filter issues/warnings by
+            check_warnings: If True, check warnings list; if False, check issues list
+        """
         if check_warnings:
             count = len([w for w in self.warnings if w['type'] == issue_type])
             if count > 0:
@@ -248,12 +385,29 @@ class SecurityChecker:
 
 
 def run_external_tools() -> Dict[str, bool]:
-    """Run external security tools if available."""
+    """Execute external security scanning tools.
+
+    Attempts to run third-party security tools if installed:
+
+    - Bandit: Static analysis security linter for Python code.
+      Checks for common security issues with configurable severity levels.
+
+    - Safety: Scans Python dependencies against a database of known
+      security vulnerabilities. Checks requirements for CVEs.
+
+    Each tool runs with a 30-second timeout. Missing tools are noted
+    but don't fail the audit.
+
+    Returns:
+        Dictionary mapping tool names to their pass/fail status.
+        Tools that aren't installed are excluded from results.
+    """
     results = {}
     
     print(f"\n{BLUE}Running External Security Tools...{RESET}\n")
     
-    # Bandit
+    # Run Bandit: Python security linter
+    # Scans for common security issues like hardcoded passwords, SQL injection, etc.
     try:
         result = subprocess.run(
             ['bandit', '-r', 'src/', '-f', 'json'],
@@ -269,8 +423,9 @@ def run_external_tools() -> Dict[str, bool]:
             results['bandit'] = False
     except (subprocess.SubprocessError, FileNotFoundError):
         print(f"  {YELLOW}⚠ Bandit not installed{RESET}")
-    
-    # Safety
+
+    # Run Safety: Dependency vulnerability scanner
+    # Checks installed packages against a database of known CVEs
     try:
         result = subprocess.run(
             ['safety', 'check', '--json'],
@@ -291,7 +446,17 @@ def run_external_tools() -> Dict[str, bool]:
 
 
 def main():
-    """Main security check function."""
+    """Execute complete security audit and report results.
+
+    Runs all internal security checks and external tool scans,
+    then generates a comprehensive report with:
+    - Critical issues (block deployment)
+    - Warnings (should be reviewed)
+    - External tool results
+    - Final pass/fail verdict
+
+    Exits with code 0 if all checks pass, 1 if issues are found.
+    """
     print(f"\n{BLUE}═══════════════════════════════════════════{RESET}")
     print(f"{BLUE}   SECURITY AUDIT - Audio Extraction Project{RESET}")
     print(f"{BLUE}═══════════════════════════════════════════{RESET}\n")
