@@ -152,6 +152,140 @@ def is_retriable_exception(
     return isinstance(exception, retriable_exceptions)
 
 
+def _create_retry_config_from_params(
+    config: Optional[RetryConfig],
+    max_attempts: Optional[int],
+    base_delay: Optional[float],
+    max_delay: Optional[float],
+    exponential_base: Optional[float],
+    jitter: Optional[bool],
+    retriable_exceptions: Optional[Tuple[Type[Exception], ...]],
+) -> RetryConfig:
+    """Create RetryConfig from individual parameters or use provided config.
+
+    Args:
+        config: Existing RetryConfig instance (takes precedence)
+        max_attempts: Maximum number of attempts
+        base_delay: Base delay in seconds
+        max_delay: Maximum delay in seconds
+        exponential_base: Base for exponential backoff
+        jitter: Whether to add jitter to delays
+        retriable_exceptions: Tuple of exception types to retry on
+
+    Returns:
+        RetryConfig instance
+    """
+    if config is not None:
+        return config
+
+    return RetryConfig(
+        max_attempts=max_attempts or 3,
+        base_delay=base_delay or 1.0,
+        max_delay=max_delay or 60.0,
+        exponential_base=exponential_base or 2.0,
+        jitter=jitter if jitter is not None else True,
+        retriable_exceptions=retriable_exceptions or RetryConfig().retriable_exceptions,
+    )
+
+
+def _log_retry_attempt(func_name: str, attempt: int, max_attempts: int) -> None:
+    """Log retry attempt information.
+
+    Args:
+        func_name: Name of the function being retried
+        attempt: Current attempt number (0-based)
+        max_attempts: Maximum number of attempts
+    """
+    if attempt > 0:
+        logger.info(f"Retry attempt {attempt + 1}/{max_attempts} for {func_name}")
+
+
+def _handle_non_retriable_exception(func_name: str, exception: Exception) -> None:
+    """Log and raise non-retriable exception.
+
+    Args:
+        func_name: Name of the function that failed
+        exception: The non-retriable exception
+
+    Raises:
+        The original exception
+    """
+    logger.error(f"Non-retriable exception in {func_name}: {exception}")
+    raise exception
+
+
+def _calculate_and_apply_delay_sync(
+    func_name: str,
+    attempt: int,
+    max_attempts: int,
+    exception: Exception,
+    config: RetryConfig,
+) -> float:
+    """Calculate delay, log warning, and apply delay for synchronous retry.
+
+    Args:
+        func_name: Name of the function being retried
+        attempt: Current attempt number (0-based)
+        max_attempts: Maximum number of attempts
+        exception: The exception that triggered the retry
+        config: RetryConfig instance
+
+    Returns:
+        The delay that was applied in seconds
+    """
+    delay = calculate_delay(
+        attempt + 1,
+        config.base_delay,
+        config.max_delay,
+        config.exponential_base,
+        config.jitter,
+    )
+
+    logger.warning(
+        f"Attempt {attempt + 1}/{max_attempts} failed for {func_name}: {exception}. "
+        f"Retrying in {delay:.2f}s..."
+    )
+
+    time.sleep(delay)
+    return delay
+
+
+async def _calculate_and_apply_delay_async(
+    func_name: str,
+    attempt: int,
+    max_attempts: int,
+    exception: Exception,
+    config: RetryConfig,
+) -> float:
+    """Calculate delay, log warning, and apply delay for asynchronous retry.
+
+    Args:
+        func_name: Name of the function being retried
+        attempt: Current attempt number (0-based)
+        max_attempts: Maximum number of attempts
+        exception: The exception that triggered the retry
+        config: RetryConfig instance
+
+    Returns:
+        The delay that was applied in seconds
+    """
+    delay = calculate_delay(
+        attempt + 1,
+        config.base_delay,
+        config.max_delay,
+        config.exponential_base,
+        config.jitter,
+    )
+
+    logger.warning(
+        f"Attempt {attempt + 1}/{max_attempts} failed for {func_name}: {exception}. "
+        f"Retrying in {delay:.2f}s..."
+    )
+
+    await asyncio.sleep(delay)
+    return delay
+
+
 def retry_sync(
     config: Optional[RetryConfig] = None,
     max_attempts: Optional[int] = None,
@@ -181,15 +315,9 @@ def retry_sync(
             # API call that might fail
             pass
     """
-    if config is None:
-        config = RetryConfig(
-            max_attempts=max_attempts or 3,
-            base_delay=base_delay or 1.0,
-            max_delay=max_delay or 60.0,
-            exponential_base=exponential_base or 2.0,
-            jitter=jitter if jitter is not None else True,
-            retriable_exceptions=retriable_exceptions or RetryConfig().retriable_exceptions,
-        )
+    retry_config = _create_retry_config_from_params(
+        config, max_attempts, base_delay, max_delay, exponential_base, jitter, retriable_exceptions
+    )
 
     def decorator(func: F) -> F:
         @functools.wraps(func)
@@ -197,48 +325,32 @@ def retry_sync(
             last_exception: Optional[Exception] = None
             total_delay = 0.0
 
-            for attempt in range(config.max_attempts):
+            for attempt in range(retry_config.max_attempts):
                 try:
-                    if attempt > 0:
-                        logger.info(
-                            f"Retry attempt {attempt + 1}/{config.max_attempts} for {func.__name__}"
-                        )
+                    _log_retry_attempt(func.__name__, attempt, retry_config.max_attempts)
                     return func(*args, **kwargs)
 
                 except Exception as e:
                     last_exception = e
 
                     # Check if we should retry this exception
-                    if not is_retriable_exception(e, config.retriable_exceptions):
-                        logger.error(f"Non-retriable exception in {func.__name__}: {e}")
-                        raise
+                    if not is_retriable_exception(e, retry_config.retriable_exceptions):
+                        _handle_non_retriable_exception(func.__name__, e)
 
                     # Check if we have more attempts left
-                    if attempt + 1 >= config.max_attempts:
+                    if attempt + 1 >= retry_config.max_attempts:
                         logger.error(f"All retry attempts exhausted for {func.__name__}: {e}")
                         break
 
                     # Calculate and apply delay
-                    delay = calculate_delay(
-                        attempt + 1,
-                        config.base_delay,
-                        config.max_delay,
-                        config.exponential_base,
-                        config.jitter,
+                    delay = _calculate_and_apply_delay_sync(
+                        func.__name__, attempt, retry_config.max_attempts, e, retry_config
                     )
-
                     total_delay += delay
-
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{config.max_attempts} failed for {func.__name__}: {e}. "
-                        f"Retrying in {delay:.2f}s..."
-                    )
-
-                    time.sleep(delay)
 
             # All attempts failed
             raise RetryExhaustedError(
-                config.max_attempts, last_exception or Exception("Unknown error"), total_delay
+                retry_config.max_attempts, last_exception or Exception("Unknown error"), total_delay
             )
 
         return wrapper  # type: ignore
@@ -275,15 +387,9 @@ def retry_async(
             # Async API call that might fail
             pass
     """
-    if config is None:
-        config = RetryConfig(
-            max_attempts=max_attempts or 3,
-            base_delay=base_delay or 1.0,
-            max_delay=max_delay or 60.0,
-            exponential_base=exponential_base or 2.0,
-            jitter=jitter if jitter is not None else True,
-            retriable_exceptions=retriable_exceptions or RetryConfig().retriable_exceptions,
-        )
+    retry_config = _create_retry_config_from_params(
+        config, max_attempts, base_delay, max_delay, exponential_base, jitter, retriable_exceptions
+    )
 
     def decorator(func: AsyncF) -> AsyncF:
         @functools.wraps(func)
@@ -291,48 +397,32 @@ def retry_async(
             last_exception: Optional[Exception] = None
             total_delay = 0.0
 
-            for attempt in range(config.max_attempts):
+            for attempt in range(retry_config.max_attempts):
                 try:
-                    if attempt > 0:
-                        logger.info(
-                            f"Retry attempt {attempt + 1}/{config.max_attempts} for {func.__name__}"
-                        )
+                    _log_retry_attempt(func.__name__, attempt, retry_config.max_attempts)
                     return await func(*args, **kwargs)
 
                 except Exception as e:
                     last_exception = e
 
                     # Check if we should retry this exception
-                    if not is_retriable_exception(e, config.retriable_exceptions):
-                        logger.error(f"Non-retriable exception in {func.__name__}: {e}")
-                        raise
+                    if not is_retriable_exception(e, retry_config.retriable_exceptions):
+                        _handle_non_retriable_exception(func.__name__, e)
 
                     # Check if we have more attempts left
-                    if attempt + 1 >= config.max_attempts:
+                    if attempt + 1 >= retry_config.max_attempts:
                         logger.error(f"All retry attempts exhausted for {func.__name__}: {e}")
                         break
 
                     # Calculate and apply delay
-                    delay = calculate_delay(
-                        attempt + 1,
-                        config.base_delay,
-                        config.max_delay,
-                        config.exponential_base,
-                        config.jitter,
+                    delay = await _calculate_and_apply_delay_async(
+                        func.__name__, attempt, retry_config.max_attempts, e, retry_config
                     )
-
                     total_delay += delay
-
-                    logger.warning(
-                        f"Attempt {attempt + 1}/{config.max_attempts} failed for {func.__name__}: {e}. "
-                        f"Retrying in {delay:.2f}s..."
-                    )
-
-                    await asyncio.sleep(delay)
 
             # All attempts failed
             raise RetryExhaustedError(
-                config.max_attempts, last_exception or Exception("Unknown error"), total_delay
+                retry_config.max_attempts, last_exception or Exception("Unknown error"), total_delay
             )
 
         return wrapper  # type: ignore
