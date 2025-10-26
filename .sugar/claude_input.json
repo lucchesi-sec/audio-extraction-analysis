@@ -1,44 +1,31 @@
 {
-  "task_type": "feature",
-  "title": "Remove mock-heavy provider integration tests",
-  "description": "{\n  \"priority\": 3,\n  \"type\": \"test\",\n  \"context\": \"tests/e2e/test_provider_integration.py has 350 LOC testing mock behavior not real integration. All providers patched with Mock(). Tests mock orchestration not actual behavior.\",\n  \"business_context\": \"Removes misleading tests. Focus on real contract testing.\",\n  \"technical_requirements\": [\n    \"Delete mock-heavy Deepgram tests (lines 180-283)\",\n    \"Delete mock-heavy ElevenLabs tests (lines 285-365)\",\n    \"Delete fallback tests for dead orchestration code (lines 417-519)\",\n    \"Keep only real provider contract tests\",\n    \"Add provider test modes/fixtures for real testing\"\n  ],\n  \"success_criteria\": [\n    \"~350 LOC of mock tests removed\",\n    \"Only real integration tests remain\",\n    \"Tests verify actual provider contracts\",\n    \"No false confidence from mocked behavior\"\n  ]\n}",
+  "task_type": "refactor",
+  "title": "Refactor large functions in common_validation.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/utils/common_validation.py**\nIssue Type: long_function\nSeverity: medium\nLine: 29\n\n**Description:** Function 'validate_file_path' is 59 lines long\n**Suggested Action:** Consider breaking down validate_file_path into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "09d24db4-2277-4833-be94-d69251f41b77",
-    "source_type": "cli",
+    "work_item_id": "acd62f62-eef7-4ea5-badd-6ce81977bcdb",
+    "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:46:03.475853",
-      "parsed_description": {
-        "priority": 3,
-        "type": "test",
-        "context": "tests/e2e/test_provider_integration.py has 350 LOC testing mock behavior not real integration. All providers patched with Mock(). Tests mock orchestration not actual behavior.",
-        "business_context": "Removes misleading tests. Focus on real contract testing.",
-        "technical_requirements": [
-          "Delete mock-heavy Deepgram tests (lines 180-283)",
-          "Delete mock-heavy ElevenLabs tests (lines 285-365)",
-          "Delete fallback tests for dead orchestration code (lines 417-519)",
-          "Keep only real provider contract tests",
-          "Add provider test modes/fixtures for real testing"
-        ],
-        "success_criteria": [
-          "~350 LOC of mock tests removed",
-          "Only real integration tests remain",
-          "Tests verify actual provider contracts",
-          "No false confidence from mocked behavior"
-        ]
+      "quality_issue": {
+        "type": "long_function",
+        "severity": "medium",
+        "line": 29,
+        "description": "Function 'validate_file_path' is 59 lines long",
+        "suggestion": "Consider breaking down validate_file_path into smaller functions"
       },
-      "description_format": "json"
+      "discovered_at": "2025-10-26T16:49:45.633147",
+      "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T17:49:20.724365",
+  "timestamp": "2025-10-26T17:52:37.167047",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

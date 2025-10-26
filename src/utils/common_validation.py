@@ -26,6 +26,86 @@ class FileValidator:
     DEFAULT_MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
     
     @classmethod
+    def _check_file_existence(cls, file_path: Path) -> None:
+        """Check if file exists.
+
+        Args:
+            file_path: Path to check
+
+        Raises:
+            FileNotFoundError: If file doesn't exist
+        """
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+    @classmethod
+    def _check_file_extension(cls, file_path: Path, allowed_extensions: Set[str]) -> None:
+        """Check if file extension is allowed.
+
+        Args:
+            file_path: Path to check
+            allowed_extensions: Set of allowed file extensions (with dots)
+
+        Raises:
+            ValueError: If extension is not allowed
+        """
+        if file_path.suffix.lower() not in allowed_extensions:
+            raise ValueError(
+                f"Unsupported file extension: {file_path.suffix}. "
+                f"Allowed: {', '.join(sorted(allowed_extensions))}"
+            )
+
+    @classmethod
+    def _check_file_size(cls, file_path: Path, max_size: int) -> None:
+        """Check if file size is within limits.
+
+        Args:
+            file_path: Path to check
+            max_size: Maximum file size in bytes
+
+        Raises:
+            ValueError: If file exceeds size limit
+        """
+        file_size = file_path.stat().st_size
+        if file_size > max_size:
+            raise ValueError(
+                f"File size {file_size:,} bytes exceeds maximum {max_size:,} bytes"
+            )
+
+    @classmethod
+    def _check_file_type(cls, file_path: Path) -> None:
+        """Check if path is a regular file.
+
+        Args:
+            file_path: Path to check
+
+        Raises:
+            ValueError: If path is not a file
+        """
+        try:
+            isf = file_path.is_file()
+        except Exception:  # e.g., mocked stat without st_mode
+            isf = True  # Defer to permission check
+        if not isf:
+            raise ValueError(f"Path is not a file: {file_path}")
+
+    @classmethod
+    def _check_file_permissions(cls, file_path: Path) -> None:
+        """Check if file is readable.
+
+        Args:
+            file_path: Path to check
+
+        Raises:
+            PermissionError: If file cannot be read
+        """
+        try:
+            with open(file_path, 'rb'):
+                pass
+        except PermissionError as e:
+            raise PermissionError(f"Cannot read file: {file_path}") from e
+
+    @classmethod
     def validate_file_path(
         cls,
         file_path: Path,
@@ -34,58 +114,36 @@ class FileValidator:
         max_size: Optional[int] = None
     ) -> None:
         """Validate a file path with comprehensive checks.
-        
+
         Args:
             file_path: Path to validate
             must_exist: Whether the file must exist
             allowed_extensions: Set of allowed file extensions (with dots)
             max_size: Maximum file size in bytes
-            
+
         Raises:
             FileNotFoundError: If file doesn't exist and must_exist is True
             ValueError: If validation fails
             PermissionError: If file is not readable
         """
         file_path = Path(file_path)
-        
+
         # Security validation - delegated to sanitizer
         PathSanitizer.validate_path_security(file_path)
-        
-        # Existence check
-        if must_exist and not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-        
-        # Extension check
-        if allowed_extensions and file_path.suffix.lower() not in allowed_extensions:
-            raise ValueError(
-                f"Unsupported file extension: {file_path.suffix}. "
-                f"Allowed: {', '.join(sorted(allowed_extensions))}"
-            )
-        
-        # Size check
+
+        # Run existence-dependent checks
+        if must_exist:
+            cls._check_file_existence(file_path)
+            cls._check_file_type(file_path)
+            cls._check_file_permissions(file_path)
+
+        # Extension check (can run regardless of existence)
+        if allowed_extensions:
+            cls._check_file_extension(file_path, allowed_extensions)
+
+        # Size check (requires file to exist)
         if must_exist and max_size is not None:
-            file_size = file_path.stat().st_size
-            if file_size > max_size:
-                raise ValueError(
-                    f"File size {file_size:,} bytes exceeds maximum {max_size:,} bytes"
-                )
-        
-        # Permission/type check (robust against patched stat in tests)
-        if must_exist:
-            try:
-                isf = file_path.is_file()
-            except Exception:  # e.g., mocked stat without st_mode
-                isf = True  # Defer to open() check below
-            if not isf:
-                raise ValueError(f"Path is not a file: {file_path}")
-            
-        if must_exist:
-            try:
-                # Try to open the file to check permissions
-                with open(file_path, 'rb'):
-                    pass
-            except PermissionError as e:
-                raise PermissionError(f"Cannot read file: {file_path}") from e
+            cls._check_file_size(file_path, max_size)
     
     @classmethod
     def validate_media_file(
