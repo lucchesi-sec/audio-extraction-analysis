@@ -70,115 +70,153 @@ class BaseCache(Protocol):
         ...
     
     def delete(self, key: str) -> bool:
-        """Delete entry from cache.
-        
+        """Remove an entry from the cache.
+
         Args:
-            key: Cache key
-            
+            key: Cache key to delete
+
         Returns:
-            True if deleted, False if not found
+            True if the entry existed and was deleted, False if key not found.
         """
         ...
     
     def exists(self, key: str) -> bool:
-        """Check if key exists in cache.
-        
+        """Check if a key exists in the cache.
+
         Args:
-            key: Cache key
-            
+            key: Cache key to check
+
         Returns:
-            True if key exists and is not expired
+            True if key exists and has not expired, False otherwise.
         """
         ...
-    
+
     def clear(self) -> int:
-        """Clear all entries from cache.
-        
+        """Remove all entries from the cache.
+
         Returns:
-            Number of entries cleared
+            The number of entries that were cleared.
         """
         ...
-    
+
     def size(self) -> int:
-        """Get current cache size in bytes.
-        
+        """Get the current cache size.
+
         Returns:
-            Size in bytes
+            Total size of all cached entries in bytes, excluding overhead.
         """
         ...
-    
+
     def keys(self) -> Set[str]:
-        """Get all cache keys.
-        
+        """Retrieve all valid cache keys.
+
         Returns:
-            Set of all non-expired keys
+            Set containing all non-expired cache keys currently stored.
+            May be empty if cache is empty or all entries have expired.
         """
         ...
 
 
 class CacheUtils:
-    """Utility functions for cache operations."""
-    
+    """Static utility methods for common cache operations.
+
+    Provides helper functions for key normalization, size calculation,
+    and entry validation. All methods are stateless and thread-safe.
+    """
+
     @staticmethod
     def normalize_key(key: str) -> str:
-        """Normalize cache key for consistent storage.
-        
+        """Normalize a cache key for consistent storage and retrieval.
+
+        Performs case-insensitive normalization by stripping whitespace
+        and converting to lowercase. This ensures that keys like "MyKey",
+        "mykey", and " MyKey " all map to the same cache entry.
+
         Args:
-            key: Raw cache key
-            
+            key: Raw cache key string
+
         Returns:
-            Normalized key string
+            Normalized lowercase key with whitespace removed.
+
+        Note:
+            For very long keys (>200 chars), consider using a hash-based
+            approach to limit key length in storage backends.
         """
-        # Simple normalization - could be extended with hashing for very long keys
+        # Simple normalization - could be extended with SHA256 hashing for very long keys
         return key.strip().lower()
     
     @staticmethod
     def calculate_size(value: Any) -> int:
-        """Calculate the size of a value in bytes.
-        
+        """Calculate the approximate size of a value in bytes.
+
+        Provides size estimates for different value types to assist with
+        cache size management and eviction policies.
+
         Args:
-            value: Value to measure
-            
+            value: The value to measure (str, bytes, or any object)
+
         Returns:
-            Size estimate in bytes
+            Estimated size in bytes. For bytes/bytearray returns exact length,
+            for strings returns UTF-8 encoded size, for other objects returns
+            sys.getsizeof() estimate (includes object overhead).
+
+        Note:
+            For complex objects, sys.getsizeof() only measures shallow size
+            and may not include referenced objects. Consider deep size
+            calculation for nested structures if accuracy is critical.
         """
         if isinstance(value, (bytes, bytearray)):
             return len(value)
         elif isinstance(value, str):
             return len(value.encode('utf-8'))
-        
-        # For complex objects, use sys.getsizeof as estimate
+
+        # For complex objects, use sys.getsizeof as approximate estimate
         return sys.getsizeof(value)
     
     @staticmethod
     def is_expired(entry: CacheEntry) -> bool:
-        """Check if a cache entry has expired.
-        
+        """Check if a cache entry has expired based on its TTL.
+
+        Delegates to the entry's built-in expiration check method,
+        which compares the current time against the creation time plus TTL.
+
         Args:
-            entry: Cache entry to check
-            
+            entry: CacheEntry instance to validate
+
         Returns:
-            True if expired, False otherwise
+            True if the entry has expired, False if still valid or no TTL set.
         """
         return entry.is_expired()
 
 
 class SerializationHelper:
-    """Helper for safe JSON serialization/deserialization of cache values."""
-    
+    """JSON-based serialization utilities with optional zlib compression.
+
+    Provides safe serialization and deserialization methods for cache entries
+    and arbitrary values. Handles edge cases gracefully and supports optional
+    compression for larger payloads.
+
+    All methods use UTF-8 encoding and JSON format for cross-platform compatibility.
+    Compression uses zlib level 6 (balanced speed/size ratio).
+    """
+
     @staticmethod
     def serialize_entry(entry: CacheEntry, use_compression: bool = False) -> bytes:
-        """Serialize cache entry to bytes.
-        
+        """Serialize a CacheEntry to bytes for storage.
+
+        Converts the entry to a dictionary representation, then encodes as
+        JSON bytes. Optionally compresses the result using zlib.
+
         Args:
-            entry: Cache entry to serialize
-            use_compression: Whether to compress the data
-            
+            entry: CacheEntry instance to serialize
+            use_compression: If True, compress data with zlib level 6
+
         Returns:
-            Serialized data as bytes
-            
+            UTF-8 encoded JSON bytes, optionally compressed.
+
         Raises:
-            ValueError: If serialization fails
+            ValueError: If entry cannot be serialized (e.g., non-JSON-safe values)
+                or if compression fails.
         """
         try:
             # Convert entry to dict
@@ -198,14 +236,23 @@ class SerializationHelper:
     
     @staticmethod
     def deserialize_entry(data: bytes, is_compressed: bool = False) -> Optional[CacheEntry]:
-        """Deserialize cache entry from bytes.
-        
+        """Deserialize bytes back into a CacheEntry instance.
+
+        Reverses the serialization process: decompresses if needed, decodes
+        UTF-8 JSON, and reconstructs the CacheEntry from the dictionary.
+
         Args:
-            data: Serialized data
-            is_compressed: Whether data is compressed
-            
+            data: Serialized byte data
+            is_compressed: If True, decompress data before deserializing
+
         Returns:
-            Cache entry or None if deserialization fails
+            Reconstructed CacheEntry instance, or None if deserialization fails.
+            Returns None for corrupted data, invalid JSON, missing fields, or
+            decompression errors. Errors are logged for debugging.
+
+        Note:
+            This method never raises exceptions - errors are logged and None
+            is returned to allow graceful degradation in cache operations.
         """
         try:
             # Decompress if needed
@@ -222,16 +269,28 @@ class SerializationHelper:
             logger.error(f"Failed to deserialize cache entry: {e}")
             return None
     
-    @staticmethod 
+    @staticmethod
     def serialize_value(value: Any, use_compression: bool = False) -> bytes:
-        """Serialize a value to bytes safely.
-        
+        """Serialize an arbitrary value to bytes with type preservation.
+
+        Handles multiple value types intelligently:
+        - Objects with to_dict() method: calls method and stores type info
+        - JSON-serializable values: stores directly with type info
+        - Non-serializable objects: converts to string representation
+
         Args:
-            value: Value to serialize
-            use_compression: Whether to compress
-            
+            value: Any Python value to serialize
+            use_compression: If True, compress the JSON bytes with zlib
+
         Returns:
-            Serialized bytes
+            UTF-8 encoded JSON bytes containing type metadata and value data.
+
+        Raises:
+            ValueError: If serialization completely fails (rare - falls back to str()).
+
+        Note:
+            Type information is preserved in the serialized format to enable
+            proper reconstruction during deserialization.
         """
         try:
             # Handle different value types
@@ -268,14 +327,23 @@ class SerializationHelper:
     
     @staticmethod
     def deserialize_value(data: bytes, is_compressed: bool = False) -> Any:
-        """Deserialize a value from bytes.
-        
+        """Deserialize bytes back into the original value type.
+
+        Attempts to reconstruct the original value using stored type metadata.
+        Supports automatic reconstruction of known types (e.g., TranscriptionResult).
+
         Args:
-            data: Serialized data
-            is_compressed: Whether data is compressed
-            
+            data: Serialized byte data
+            is_compressed: If True, decompress before deserializing
+
         Returns:
-            Original value or None if deserialization fails
+            Reconstructed value in its original type, or None on failure.
+            For TranscriptionResult objects, attempts class reconstruction.
+            For unknown types, returns raw dictionary data.
+
+        Note:
+            Errors are logged but not raised. Returns None for corrupted data,
+            invalid JSON, or decompression failures to enable graceful handling.
         """
         try:
             if is_compressed:
@@ -304,18 +372,27 @@ class SerializationHelper:
 
 
 class TTLManager:
-    """Helper for managing TTL (Time To Live) functionality."""
-    
+    """Utilities for managing Time-To-Live (TTL) based cache expiration.
+
+    Provides methods to check expiration status and calculate remaining lifetime
+    for cache entries with TTL values. All time comparisons use Unix timestamps.
+    """
+
     @staticmethod
     def is_expired(entry: CacheEntry, current_time: Optional[float] = None) -> bool:
-        """Check if entry has expired based on TTL.
-        
+        """Determine if a cache entry has exceeded its TTL.
+
+        Compares the entry's age (time since creation) against its TTL value.
+        Entries without a TTL (None) never expire.
+
         Args:
-            entry: Cache entry to check
-            current_time: Current timestamp (None for now)
-            
+            entry: CacheEntry instance to validate
+            current_time: Optional Unix timestamp for "now". If None, uses time.time().
+                Useful for testing or batch expiration checks with a fixed reference time.
+
         Returns:
-            True if expired
+            True if the entry has expired (age > TTL), False otherwise.
+            Always returns False for entries with ttl=None (infinite lifetime).
         """
         if entry.ttl is None:
             return False
@@ -328,13 +405,24 @@ class TTLManager:
     
     @staticmethod
     def time_until_expiry(entry: CacheEntry) -> Optional[float]:
-        """Get time until entry expires.
-        
+        """Calculate remaining lifetime for a cache entry.
+
+        Computes how many seconds remain until the entry expires based on
+        its creation time and TTL value.
+
         Args:
-            entry: Cache entry
-            
+            entry: CacheEntry instance to analyze
+
         Returns:
-            Seconds until expiry, None if no TTL set
+            Remaining seconds until expiration (>= 0.0), or None if no TTL set.
+            Returns 0.0 for already-expired entries (never negative).
+            Returns None for entries with ttl=None (infinite lifetime).
+
+        Example:
+            >>> entry = CacheEntry(data="test", ttl=60)  # 60 second TTL
+            >>> # After 45 seconds...
+            >>> TTLManager.time_until_expiry(entry)
+            15.0
         """
         if entry.ttl is None:
             return None
@@ -348,86 +436,153 @@ class TTLManager:
 
 
 class SizeLimitManager:
-    """Helper for managing cache size limits."""
-    
+    """Stateful manager for tracking and enforcing cache size limits.
+
+    Maintains a running total of cache size and provides methods to check
+    capacity constraints before adding entries. Useful for implementing
+    size-based eviction policies (e.g., LRU with max size).
+
+    Attributes:
+        max_size_bytes: Maximum allowed cache size in bytes (read-only)
+        current_size: Current total size of cached entries in bytes
+        available_space: Remaining capacity in bytes
+        utilization_percent: Current usage as percentage (0-100)
+    """
+
     def __init__(self, max_size_bytes: int):
-        """Initialize size limit manager.
-        
+        """Initialize a new size limit manager.
+
         Args:
-            max_size_bytes: Maximum cache size in bytes
+            max_size_bytes: Maximum cache size in bytes (must be positive)
         """
         self.max_size_bytes = max_size_bytes
         self._current_size = 0
     
     def can_fit(self, entry_size: int) -> bool:
-        """Check if an entry of given size can fit.
-        
+        """Check if an entry size is within absolute size limits.
+
+        Validates that the entry itself doesn't exceed max_size_bytes,
+        regardless of current cache usage.
+
         Args:
-            entry_size: Size of entry in bytes
-            
+            entry_size: Size of the entry in bytes
+
         Returns:
-            True if it fits within limits
+            True if entry_size <= max_size_bytes, False otherwise.
+
+        Note:
+            This checks absolute size, not available space. Use would_exceed_limit()
+            to check if adding the entry would overflow current usage.
         """
         return entry_size <= self.max_size_bytes
-    
+
     def would_exceed_limit(self, entry_size: int) -> bool:
-        """Check if adding entry would exceed size limit.
-        
+        """Check if adding an entry would overflow the size limit.
+
+        Determines whether adding entry_size to the current cache would
+        exceed max_size_bytes, indicating eviction is needed.
+
         Args:
-            entry_size: Size of entry to add
-            
+            entry_size: Size of entry to potentially add (bytes)
+
         Returns:
-            True if would exceed limit
+            True if (current_size + entry_size) > max_size_bytes, False otherwise.
         """
         return (self._current_size + entry_size) > self.max_size_bytes
-    
+
     def space_needed_for(self, entry_size: int) -> int:
-        """Calculate how much space needs to be freed.
-        
+        """Calculate how much space must be freed to fit an entry.
+
+        Computes the number of bytes that need to be evicted from the cache
+        before adding the new entry. Used for implementing eviction logic.
+
         Args:
-            entry_size: Size of entry to add
-            
+            entry_size: Size of entry to add (bytes)
+
         Returns:
-            Bytes that need to be freed (0 if fits)
+            Number of bytes to free (>= 0). Returns 0 if entry fits without eviction.
+
+        Example:
+            >>> manager = SizeLimitManager(max_size_bytes=1000)
+            >>> manager.add_entry(800)  # Current size: 800
+            >>> manager.space_needed_for(300)  # Would total 1100
+            100  # Need to free 100 bytes
         """
         if not self.would_exceed_limit(entry_size):
             return 0
-            
+
         return (self._current_size + entry_size) - self.max_size_bytes
     
     def add_entry(self, entry_size: int) -> None:
-        """Add entry size to current total.
-        
+        """Increment the current size counter when adding an entry.
+
+        Updates internal tracking when a new entry is stored. Should be called
+        after successfully storing an entry in the cache backend.
+
         Args:
-            entry_size: Size of added entry
+            entry_size: Size of the added entry in bytes
+
+        Note:
+            This method does not enforce limits - use can_fit() and
+            would_exceed_limit() before adding entries.
         """
         self._current_size += entry_size
-    
+
     def remove_entry(self, entry_size: int) -> None:
-        """Remove entry size from current total.
-        
+        """Decrement the current size counter when removing an entry.
+
+        Updates internal tracking when an entry is deleted or evicted.
+        Should be called after successfully removing an entry.
+
         Args:
-            entry_size: Size of removed entry
+            entry_size: Size of the removed entry in bytes
+
+        Note:
+            Ensures current_size never goes negative (floor of 0).
         """
         self._current_size = max(0, self._current_size - entry_size)
-    
+
     def reset(self) -> None:
-        """Reset size counter to zero."""
+        """Reset the size counter to zero.
+
+        Typically called when clearing the entire cache or during initialization.
+        Does not modify max_size_bytes.
+        """
         self._current_size = 0
     
     @property
     def current_size(self) -> int:
-        """Get current cache size in bytes."""
+        """Current total size of all cached entries in bytes.
+
+        Returns:
+            Sum of all entry sizes tracked by add_entry() calls.
+        """
         return self._current_size
-    
-    @property 
+
+    @property
     def available_space(self) -> int:
-        """Get available space in bytes."""
+        """Remaining capacity before hitting the size limit.
+
+        Returns:
+            Number of bytes available (max_size_bytes - current_size).
+            Always >= 0, even if current_size somehow exceeds limit.
+        """
         return max(0, self.max_size_bytes - self._current_size)
-    
+
     @property
     def utilization_percent(self) -> float:
-        """Get cache utilization as percentage."""
+        """Current cache utilization as a percentage.
+
+        Returns:
+            Percentage of max_size_bytes currently in use (0.0 - 100.0).
+            Returns 0.0 if max_size_bytes is 0 to avoid division by zero.
+
+        Example:
+            >>> manager = SizeLimitManager(max_size_bytes=1000)
+            >>> manager.add_entry(750)
+            >>> manager.utilization_percent
+            75.0
+        """
         if self.max_size_bytes == 0:
             return 0.0
         return (self._current_size / self.max_size_bytes) * 100
