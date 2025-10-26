@@ -1,28 +1,26 @@
 {
   "task_type": "test",
-  "title": "Add tests for sanitization.py",
-  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/utils/sanitization.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
+  "title": "Review test coverage for benchmark_eviction.py",
+  "description": "Analyze ./tests/cache/benchmark_eviction.py and ensure adequate test coverage. Add missing tests for critical functionality.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "9310aafa-746a-4c76-bd86-4f50942f0ad0",
-    "source_type": "test_coverage",
+    "work_item_id": "db2d946b-a609-476f-9c16-38e009ef370a",
+    "source_type": "maintenance_generator",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "test_analysis": {
-        "work_type": "missing_tests",
-        "details": {},
-        "discovered_at": "2025-10-26T18:22:21.731316",
-        "source_type": "test_coverage"
-      }
+      "maintenance_task": true,
+      "task_type": "test",
+      "discovered_at": "2025-10-26T18:27:47.398659",
+      "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T18:35:38.858534",
+  "timestamp": "2025-10-26T18:37:58.160153",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
