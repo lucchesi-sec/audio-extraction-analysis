@@ -1,26 +1,28 @@
 {
   "task_type": "test",
-  "title": "Review test coverage for benchmark_eviction.py",
-  "description": "Analyze ./tests/cache/benchmark_eviction.py and ensure adequate test coverage. Add missing tests for critical functionality.",
+  "title": "Add tests for __init__.py",
+  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/utils/__init__.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "db2d946b-a609-476f-9c16-38e009ef370a",
-    "source_type": "maintenance_generator",
+    "work_item_id": "4283eb05-da6b-4ecb-92ac-3384db8bba7b",
+    "source_type": "test_coverage",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "maintenance_task": true,
-      "task_type": "test",
-      "discovered_at": "2025-10-26T18:27:47.398659",
-      "source_type": "maintenance"
+      "test_analysis": {
+        "work_type": "missing_tests",
+        "details": {},
+        "discovered_at": "2025-10-26T18:27:47.737879",
+        "source_type": "test_coverage"
+      }
     }
   },
-  "timestamp": "2025-10-26T18:37:58.160153",
+  "timestamp": "2025-10-26T18:38:31.277459",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
