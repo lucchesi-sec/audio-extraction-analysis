@@ -1,4 +1,36 @@
-"""Comprehensive caching system for transcription results."""
+"""Comprehensive caching system for transcription results.
+
+This module provides a multi-level caching system for transcription results with:
+- Content-based cache keys (file hash + provider + settings)
+- Multiple eviction policies (LRU, LFU, TTL, SIZE, FIFO, RANDOM)
+- Hierarchical backend support (in-memory, disk, distributed)
+- Optional compression for storage efficiency
+- Cache warming for pre-loading frequently used data
+- Thread-safe operations with fine-grained locking
+
+Architecture:
+    TranscriptionCache (main interface)
+    ├── CacheBackend[] (hierarchical backends, L1->L2->L3)
+    ├── CacheKey (content-based addressing)
+    ├── CacheEntry (value + metadata + stats)
+    └── CacheStats (hit/miss/eviction metrics)
+
+Example:
+    ```python
+    from pathlib import Path
+    cache = TranscriptionCache(
+        policy=CachePolicy.LRU,
+        max_size_mb=500,
+        enable_compression=True
+    )
+
+    # Check cache
+    result = cache.get(Path("audio.mp3"), "whisper", {"model": "base"})
+    if result is None:
+        result = transcribe_audio(...)
+        cache.put(Path("audio.mp3"), "whisper", {"model": "base"}, result)
+    ```
+"""
 from __future__ import annotations
 
 import hashlib
@@ -26,19 +58,44 @@ from .compression import compress_value, decompress_value
 
 
 class CachePolicy(Enum):
-    """Cache eviction policies."""
+    """Cache eviction policies.
 
-    LRU = "lru"  # Least Recently Used
-    LFU = "lfu"  # Least Frequently Used
-    TTL = "ttl"  # Time To Live
-    SIZE = "size"  # Size-based eviction
-    FIFO = "fifo"  # First In First Out
-    RANDOM = "random"  # Random eviction
+    Defines strategies for selecting which cache entries to remove when space is needed:
+
+    - LRU: Best for workloads with temporal locality (recent files accessed again)
+    - LFU: Best for workloads with frequency patterns (popular files accessed repeatedly)
+    - TTL: Best when data freshness matters (expire old transcriptions)
+    - SIZE: Best for optimizing storage efficiency (remove largest items first)
+    - FIFO: Simple queue-based eviction (predictable, no access tracking overhead)
+    - RANDOM: Fastest eviction (no metadata tracking, minimal overhead)
+    """
+
+    LRU = "lru"  # Least Recently Used - evict oldest access time
+    LFU = "lfu"  # Least Frequently Used - evict lowest access count
+    TTL = "ttl"  # Time To Live - evict closest to expiration
+    SIZE = "size"  # Size-based eviction - evict largest entries
+    FIFO = "fifo"  # First In First Out - evict oldest creation time
+    RANDOM = "random"  # Random eviction - no priority logic
 
 
 @dataclass
 class CacheKey:
-    """Content-based cache key."""
+    """Content-based cache key for deterministic transcription result lookup.
+
+    Uses a composite key of (file_hash, provider, settings_hash) to ensure:
+    - Same file + provider + settings → same cache key (cache hit)
+    - Any change in file content, provider, or settings → different key (cache miss)
+
+    This prevents serving stale results when:
+    - Audio file is modified (detected via content hash)
+    - Provider is changed (e.g., whisper → google)
+    - Settings are changed (e.g., language, model, quality)
+
+    Attributes:
+        file_hash: SHA256 hash of file content (first 32 chars)
+        provider: Transcription provider name (e.g., 'whisper', 'google')
+        settings_hash: SHA256 hash of provider settings dict (first 16 chars)
+    """
 
     file_hash: str
     provider: str
@@ -154,7 +211,23 @@ class CacheKey:
 
 @dataclass
 class CacheEntry:
-    """Cache entry with metadata."""
+    """Cache entry with metadata for tracking usage and expiration.
+
+    Stores a cached value along with metadata needed for:
+    - Eviction policy decisions (access time, access count, age, size)
+    - Expiration handling (TTL)
+    - Cache analytics (metadata dict for custom tracking)
+
+    Attributes:
+        key: Content-based cache key
+        value: Cached transcription result (may be compressed bytes)
+        size: Entry size in bytes (for size-based eviction)
+        created_at: Entry creation timestamp (for FIFO, TTL policies)
+        accessed_at: Last access timestamp (for LRU policy)
+        access_count: Number of times accessed (for LFU policy)
+        ttl: Time-to-live in seconds (None = no expiration)
+        metadata: Additional metadata dict for custom tracking
+    """
 
     key: CacheKey
     value: Any
@@ -191,10 +264,23 @@ class CacheEntry:
         return (datetime.now() - self.created_at).total_seconds()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
+        """Convert to dictionary for JSON serialization.
+
+        Handles multiple value types with fallback strategy:
+        1. Custom objects with to_dict() method → call to_dict()
+        2. JSON-serializable types (dict, list, str, int, etc.) → use as-is
+        3. Non-serializable types (bytes, custom objects) → convert to string
+
+        This allows safe serialization of compressed values, TranscriptionResult objects,
+        and other complex types without losing critical data.
+
+        Returns:
+            Dictionary representation suitable for JSON persistence
+        """
         # Handle different value types safely
         value_dict = None
         if hasattr(self.value, 'to_dict') and callable(getattr(self.value, 'to_dict')):
+            # Custom objects with serialization support
             value_dict = self.value.to_dict()
         else:
             # For simple types that are JSON serializable
@@ -203,7 +289,7 @@ class CacheEntry:
                 json.dumps(self.value)  # Test if serializable
                 value_dict = self.value
             except (TypeError, ValueError):
-                # If not serializable, store as string representation
+                # If not serializable (e.g., bytes, custom objects), store as string
                 value_dict = str(self.value)
         
         return {
@@ -220,23 +306,41 @@ class CacheEntry:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CacheEntry":
-        """Create from dictionary."""
+        """Create cache entry from dictionary representation.
+
+        Reconstructs a CacheEntry from JSON data with intelligent type restoration:
+        - Deserializes the cache key
+        - Restores the original value type (TranscriptionResult, dict, etc.)
+        - Uses fallback import logic to handle different module paths
+
+        The import fallback handles cases where:
+        1. Cache was created in a different execution context (tests vs. main app)
+        2. Module structure changed between cache write and read
+        3. TranscriptionResult class is not available (returns raw dict)
+
+        Args:
+            data: Dictionary containing serialized entry data
+
+        Returns:
+            Reconstructed CacheEntry instance
+        """
         # Reconstruct the cache key
         cache_key = CacheKey.from_dict(data["key"])
-        
+
         # Reconstruct the value based on its type
         value = data["value"]
         value_type = data.get("value_type", "dict")
-        
+
         if value_type == "TranscriptionResult" and isinstance(value, dict):
-            # Try importing TranscriptionResult with fallback handling
+            # Try importing TranscriptionResult with multiple fallback paths
+            # to handle different execution contexts (tests, main app, etc.)
             try:
                 from ..models.transcription import TranscriptionResult
             except (ImportError, ValueError):
                 try:
                     from models.transcription import TranscriptionResult
                 except ImportError:
-                    # If TranscriptionResult not available, keep as dict
+                    # If TranscriptionResult not available, keep as dict (graceful degradation)
                     value = value
                 else:
                     value = TranscriptionResult.from_dict(value)
@@ -296,7 +400,20 @@ class CacheStats:
 
 
 class CacheBackend(ABC):
-    """Abstract base class for cache backends."""
+    """Abstract base class for cache backends.
+
+    Defines the interface for cache storage implementations. Backends can be:
+    - In-memory: Fast L1 cache using dict/OrderedDict
+    - Disk-based: Persistent L2 cache using SQLite or file system
+    - Distributed: Network L3 cache using Redis or Memcached
+
+    Multiple backends can be composed hierarchically (L1 → L2 → L3) where:
+    - get() checks backends in order (L1 first, L2 fallback, etc.)
+    - put() writes to primary backend (L1)
+    - Cache hits promote entries to higher levels (L2 → L1)
+
+    Implementations must be thread-safe if used in multi-threaded contexts.
+    """
 
     @abstractmethod
     def get(self, key: str) -> Optional[CacheEntry]:
@@ -364,7 +481,34 @@ class CacheBackend(ABC):
 
 
 class TranscriptionCache:
-    """Main transcription cache with multiple backends."""
+    """Main transcription cache with multiple backends and advanced features.
+
+    A production-ready caching system that provides:
+    - Content-based addressing (cache invalidation on file changes)
+    - Hierarchical backend support (L1/L2/L3 with automatic promotion)
+    - Multiple eviction policies (LRU, LFU, TTL, SIZE, FIFO, RANDOM)
+    - Optional compression (reduces memory footprint for large transcriptions)
+    - Cache warming (pre-populate with frequently accessed data)
+    - Thread-safe operations (safe for multi-threaded transcription pipelines)
+
+    Cache Hit Flow:
+        1. Generate cache key from (file_hash, provider, settings_hash)
+        2. Query backends in order (L1 → L2 → L3)
+        3. Check expiration, promote to higher levels if needed
+        4. Decompress value if compression enabled
+        5. Update access stats and return result
+
+    Cache Miss Flow:
+        1. Transcribe audio (external operation)
+        2. Compress result if enabled
+        3. Evict entries if cache full (based on policy)
+        4. Store in primary backend (L1)
+        5. Update size/count stats
+
+    Thread Safety:
+        All operations protected by RLock for safe concurrent access.
+        Stats updates and eviction decisions are atomic.
+    """
 
     def __init__(
         self,
@@ -497,49 +641,63 @@ class TranscriptionCache:
         return self._store_entry_in_backend(key_str, entry, size)
 
     def invalidate(self, file_path: Optional[Path] = None, provider: Optional[str] = None) -> int:
-        """Invalidate cache entries.
+        """Invalidate cache entries matching the specified criteria.
+
+        Removes cached transcriptions based on file path and/or provider filters:
+        - invalidate(None, None) → clear entire cache
+        - invalidate(file_path, None) → clear all providers for this file
+        - invalidate(None, provider) → clear all files for this provider
+        - invalidate(file_path, provider) → clear specific file+provider combo
+
+        Also clears the file hash cache to ensure recomputation on next access.
+
+        Use cases:
+            - File modified → invalidate(file_path) to force re-transcription
+            - Provider settings changed → invalidate(provider=name) to clear old results
+            - Cache corruption → invalidate() to clear everything
 
         Args:
-            file_path: File to invalidate (None for all)
-            provider: Provider to invalidate (None for all)
+            file_path: Specific file to invalidate (None = all files)
+            provider: Specific provider to invalidate (None = all providers)
 
         Returns:
-            Number of entries invalidated
+            Number of cache entries removed
         """
         count = 0
 
         with self._lock:
             keys_to_delete = []
 
+            # Phase 1: Identify matching keys
             for backend in self.backends:
                 for key_str in backend.keys():
-                    # Parse key
+                    # Parse key format: "file_hash:provider:settings_hash"
                     parts = key_str.split(":")
                     if len(parts) != 3:
-                        continue
+                        continue  # Skip malformed keys
 
                     file_hash, key_provider, _ = parts
 
-                    # Check match criteria
+                    # Apply provider filter
                     if provider and key_provider != provider:
                         continue
 
+                    # Apply file path filter (requires hash recomputation)
                     if file_path:
-                        # Need to match file hash
                         test_hash = CacheKey._hash_file(file_path)
                         if file_hash != test_hash[:32]:
                             continue
 
                     keys_to_delete.append(key_str)
 
-            # Delete matching keys
+            # Phase 2: Delete matching keys from all backends
             for key_str in keys_to_delete:
                 for backend in self.backends:
                     if backend.delete(key_str):
                         count += 1
                         self.stats.entry_count -= 1
 
-            # Clear file hash cache for invalidated file
+            # Phase 3: Clear file hash cache to ensure freshness
             if file_path:
                 CacheKey.clear_hash_cache(file_path)
             elif count > 0:
@@ -550,13 +708,24 @@ class TranscriptionCache:
         return count
 
     def warm(self, entries: List[Tuple[Path, str, Dict[str, Any], Any]]) -> int:
-        """Warm cache with pre-computed entries.
+        """Pre-populate cache with frequently accessed transcription results.
+
+        Cache warming improves performance by pre-loading data before it's requested:
+        - Reduces cold-start latency for known frequent queries
+        - Protects warm entries from eviction (see _evict_one)
+        - Useful for batch processing workflows with predictable access patterns
+
+        Warm entries are tracked in self._warm_keys and given eviction protection:
+        when a warm entry is selected for eviction, the eviction algorithm will
+        try to find a non-warm alternative if available.
+
+        Must be enabled via enable_warming=True during initialization.
 
         Args:
-            entries: List of (file_path, provider, settings, value) tuples
+            entries: List of (file_path, provider, settings, result) tuples to pre-cache
 
         Returns:
-            Number of entries warmed
+            Number of entries successfully warmed (may be less than input if cache full)
         """
         if not self.enable_warming:
             logger.warning("Cache warming is disabled")
@@ -565,6 +734,7 @@ class TranscriptionCache:
         count = 0
         for file_path, provider, settings, value in entries:
             if self.put(file_path, provider, settings, value):
+                # Track as warm entry for eviction protection
                 key = str(CacheKey.from_file(file_path, provider, settings))
                 self._warm_keys.add(key)
                 count += 1
@@ -573,10 +743,17 @@ class TranscriptionCache:
         return count
 
     def _evict_if_needed(self, required_size: int):
-        """Evict entries if needed to make space.
+        """Evict entries if needed to make space for new entry.
+
+        Performs eviction in two phases:
+        1. Entry count limit: Evict until entry_count < max_entries
+        2. Size limit: Evict until size_bytes + required_size <= max_size_bytes
+
+        This ensures both constraints are satisfied before inserting the new entry.
+        Eviction policy (LRU, LFU, etc.) determines which entries are removed.
 
         Args:
-            required_size: Size needed in bytes
+            required_size: Size needed in bytes for new entry
         """
         # Check entry count limit
         while self.stats.entry_count >= self.max_entries:
@@ -585,13 +762,22 @@ class TranscriptionCache:
         # Check size limit
         while self.stats.size_bytes + required_size > self.max_size_bytes:
             if not self._evict_one():
-                break
+                break  # No more entries to evict
 
     def _evict_one(self) -> bool:
-        """Evict one entry based on policy.
+        """Evict one entry based on configured eviction policy.
+
+        Selects a victim entry using the configured policy (LRU, LFU, TTL, etc.)
+        and removes it from the primary backend. Warm entries (pre-loaded via warm())
+        are protected from eviction when possible.
+
+        Eviction process:
+        1. Select victim based on policy (delegate to policy-specific selector)
+        2. Protect warm entries (skip if non-warm alternatives exist)
+        3. Delete from backend and update stats
 
         Returns:
-            True if evicted
+            True if an entry was evicted, False if cache is empty
         """
         backend = self.backends[0]
         keys = backend.keys()
@@ -615,9 +801,9 @@ class TranscriptionCache:
 
             victim_key = random.choice(list(keys))
 
-        # Skip warm entries if possible
+        # Protect warm entries from eviction if non-warm alternatives exist
         if victim_key in self._warm_keys and len(keys) > len(self._warm_keys):
-            # Try to find non-warm victim
+            # Try to find non-warm victim (simple linear search)
             for key in keys:
                 if key not in self._warm_keys:
                     victim_key = key
@@ -695,14 +881,22 @@ class TranscriptionCache:
         return select_fifo_victim(backend, keys)
 
     def _promote_entry(self, key: str, entry: CacheEntry, from_level: int):
-        """Promote entry to higher cache levels.
+        """Promote entry to higher (faster) cache levels after a cache hit.
+
+        When an entry is found in a lower-level backend (e.g., L2 disk cache),
+        it's copied to all higher levels (e.g., L1 memory cache) for faster
+        subsequent access. This implements a cache hierarchy optimization.
+
+        Example:
+            Entry found in L2 (disk) → copy to L1 (memory)
+            Next access hits L1 directly (much faster)
 
         Args:
-            key: Cache key
-            entry: Cache entry
-            from_level: Current backend level
+            key: Cache key string
+            entry: Cache entry to promote
+            from_level: Backend index where entry was found (0=L1, 1=L2, etc.)
         """
-        # Promote to all higher levels
+        # Promote to all higher levels (0 to from_level-1)
         for i in range(from_level):
             self.backends[i].put(key, entry)
 
@@ -737,22 +931,29 @@ class TranscriptionCache:
     def _prepare_cache_value(self, value: Any) -> Any:
         """Prepare value for caching by applying compression if enabled.
 
+        Part of the put() operation pipeline. Compresses the transcription result
+        if compression is enabled, reducing memory/disk usage at the cost of
+        CPU cycles for compression/decompression.
+
         Args:
-            value: Original value to cache
+            value: Original transcription result to cache
 
         Returns:
-            Compressed or original value
+            Compressed bytes if compression enabled, otherwise original value
         """
         return self._compress(value) if self.enable_compression else value
 
     def _validate_entry_size(self, size: int) -> bool:
         """Validate that entry size is within cache limits.
 
+        Part of the put() operation pipeline. Rejects entries that are larger
+        than the entire cache size (would never fit even after eviction).
+
         Args:
-            size: Entry size in bytes
+            size: Entry size in bytes (after compression if enabled)
 
         Returns:
-            True if size is acceptable, False otherwise
+            True if size is acceptable, False if entry is too large to cache
         """
         if size > self.max_size_bytes:
             logger.warning(f"Value too large to cache: {size} > {self.max_size_bytes}")
@@ -769,15 +970,18 @@ class TranscriptionCache:
     ) -> CacheEntry:
         """Create cache entry with metadata.
 
+        Part of the put() operation pipeline. Constructs a CacheEntry with
+        all necessary metadata for eviction policy decisions and analytics.
+
         Args:
-            cache_key: Cache key
-            cached_value: Prepared cache value
+            cache_key: Content-based cache key
+            cached_value: Prepared cache value (possibly compressed)
             size: Entry size in bytes
-            ttl: TTL in seconds
-            metadata: Additional metadata
+            ttl: Time-to-live in seconds (None uses default_ttl)
+            metadata: Additional metadata dict for custom tracking
 
         Returns:
-            CacheEntry instance
+            Fully constructed CacheEntry instance
         """
         return CacheEntry(
             key=cache_key,
@@ -790,13 +994,20 @@ class TranscriptionCache:
     def _store_entry_in_backend(self, key_str: str, entry: CacheEntry, size: int) -> bool:
         """Store entry in backend with eviction and stats tracking.
 
+        Final step of the put() operation pipeline. Evicts entries if necessary
+        to make space, stores the entry in the primary backend, and updates
+        cache statistics atomically.
+
+        Thread Safety:
+            Protected by self._lock for atomic eviction + insertion + stats update.
+
         Args:
             key_str: String representation of cache key
             entry: Cache entry to store
-            size: Entry size in bytes
+            size: Entry size in bytes (for stats tracking)
 
         Returns:
-            True if stored successfully
+            True if stored successfully, False on backend error
         """
         with self._lock:
             # Evict if necessary
@@ -840,3 +1051,15 @@ class TranscriptionCache:
 
 
 # Backend implementations imported lazily to avoid circular imports
+#
+# The TranscriptionCache class accepts a list of CacheBackend implementations,
+# but the concrete backend classes (InMemoryCache, DiskCache, etc.) may import
+# from this module. To break the circular dependency, backends are imported
+# lazily within methods (e.g., __init__) rather than at module level.
+#
+# Example usage:
+#     from .backends import InMemoryCache, DiskCache
+#     cache = TranscriptionCache(backends=[InMemoryCache(), DiskCache()])
+#
+# The default behavior (backends=None) lazily imports InMemoryCache to provide
+# a working cache without requiring explicit backend configuration.
