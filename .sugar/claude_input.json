@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in test_transcription_progress.py",
-  "description": "Review the documentation and comments in ./tests/unit/test_transcription_progress.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in test_security.py",
+  "description": "Review the documentation and comments in ./tests/e2e/test_security.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "8ad3d039-d942-40b9-ac8f-a174e865b7b3",
+    "work_item_id": "455b83ad-560a-41e6-baf4-b386d662f3ab",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T17:01:21.180641",
+      "discovered_at": "2025-10-26T17:01:21.180655",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:07:24.749573",
+  "timestamp": "2025-10-26T19:08:36.075997",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

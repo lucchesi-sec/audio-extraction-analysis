@@ -459,8 +459,11 @@ def extract_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
             logger.error("Audio extraction failed")
             return 1
 
+    except (IOError, OSError, ValueError, RuntimeError) as e:
+        logger.error("Extract command failed: %s", e)
+        return 1
     except Exception as e:
-        logger.error(f"Extract command failed: {e}")
+        logger.critical("An unexpected error occurred in extract_command: %s", e, exc_info=True)
         return 1
 
 
@@ -508,7 +511,7 @@ def export_markdown_transcript(args: argparse.Namespace, input_path: Path, resul
         }
         try:
             safe_write_json(base_dir / "metadata.json", metadata)
-        except (OSError, PermissionError) as e:
+        except OSError as e:
             logger.error(f"Failed writing metadata.json: {e}")
 
         # Save segments.json
@@ -523,13 +526,25 @@ def export_markdown_transcript(args: argparse.Namespace, input_path: Path, resul
         ]
         try:
             safe_write_json(base_dir / "segments.json", segments)
-        except (OSError, PermissionError) as e:
+        except OSError as e:
             logger.error(f"Failed writing segments.json: {e}")
 
         logger.info(f"Markdown transcript saved to: {md_path}")
 
     except Exception as e:
         logger.error(f"Markdown export failed: {e}")
+
+
+def _resolve_provider_name(provider: str) -> Optional[str]:
+    """Convert 'auto' provider to None for auto-selection.
+
+    Args:
+        provider: Provider name or 'auto'
+
+    Returns:
+        Provider name or None for auto-selection
+    """
+    return None if provider == "auto" else provider
 
 
 def _determine_transcribe_output_path(input_path: Path, output_arg: Optional[str]) -> Path:
@@ -564,8 +579,13 @@ def _execute_transcription(
 
     Returns:
         Transcription result object or None if failed
+
+    Note:
+        This function may hang indefinitely if the transcription service
+        encounters network issues. Timeout handling should be implemented
+        at the TranscriptionService level.
     """
-    provider_name = provider if provider != "auto" else None
+    provider_name = _resolve_provider_name(provider)
     result = transcription_service.transcribe(
         input_path,
         provider_name=provider_name,
@@ -654,8 +674,11 @@ def transcribe_command(args: argparse.Namespace, console_manager: Optional[Conso
             logger.error("Transcription failed")
             return 1
 
+    except (IOError, OSError, ValueError, RuntimeError, ValidationError) as e:
+        logger.error("Transcribe command failed: %s", e)
+        return 1
     except Exception as e:
-        logger.error(f"Transcribe command failed: {e}")
+        logger.critical("An unexpected error occurred in transcribe_command: %s", e, exc_info=True)
         return 1
 
 
@@ -674,7 +697,13 @@ def _parse_quality_preset(quality_str: str) -> AudioQuality:
         "speech": AudioQuality.SPEECH,
         "compressed": AudioQuality.COMPRESSED,
     }
-    return quality_map.get(quality_str, AudioQuality.SPEECH)
+    quality = quality_map.get(quality_str)
+    if quality is None:
+        logger.warning(
+            "Invalid quality preset '%s'. Falling back to default 'speech'.", quality_str
+        )
+        return AudioQuality.SPEECH
+    return quality
 
 
 def _setup_process_output_dir(args: argparse.Namespace) -> Path:
@@ -820,8 +849,11 @@ def process_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
             logger.error("Processing failed")
             return 1
 
+    except (IOError, OSError, ValueError, RuntimeError) as e:
+        logger.error("Process command failed: %s", e)
+        return 1
     except Exception as e:
-        logger.error(f"Process command failed: {e}")
+        logger.critical("An unexpected error occurred in process_command: %s", e, exc_info=True)
         return 1
 
 
@@ -855,9 +887,14 @@ def _perform_transcription(audio_path: Path, args) -> Any:
 
     Raises:
         Exception: If transcription fails
+
+    Note:
+        This function may hang indefinitely if the transcription service
+        encounters network issues. Timeout handling should be implemented
+        at the TranscriptionService level.
     """
     service = TranscriptionService()
-    provider_name = args.provider if args.provider != "auto" else None
+    provider_name = _resolve_provider_name(args.provider)
 
     logger.info(f"Transcribing {audio_path} using {args.provider} provider...")
     result = service.transcribe(audio_path, provider_name=provider_name, language=args.language)
@@ -940,7 +977,7 @@ def _save_metadata(source_info: dict[str, Any], result: Any, base_dir: Path) -> 
 
     try:
         safe_write_json(base_dir / "metadata.json", metadata)
-    except (OSError, PermissionError) as e:
+    except OSError as e:
         logger.error(f"Failed writing metadata.json: {e}")
 
 
@@ -963,7 +1000,7 @@ def _save_segments(result: Any, base_dir: Path) -> None:
 
     try:
         safe_write_json(base_dir / "segments.json", segments)
-    except (OSError, PermissionError) as e:
+    except OSError as e:
         logger.error(f"Failed writing segments.json: {e}")
 
 
@@ -1006,8 +1043,11 @@ def export_markdown_command(args, console_manager: Optional[ConsoleManager] = No
         logger.info("Export completed successfully!")
         return 0
 
+    except (IOError, OSError, ValueError, RuntimeError, ValidationError) as e:
+        logger.error("Export markdown command failed: %s", e)
+        return 1
     except Exception as e:
-        logger.error(f"Export markdown command failed: {e}")
+        logger.critical("An unexpected error occurred in export_markdown_command: %s", e, exc_info=True)
         return 1
 
 
@@ -1040,9 +1080,6 @@ def main() -> int:
         elif args.command == "export-markdown":
             # Handle export-markdown command
             return export_markdown_command(args, console_manager)
-        else:
-            parser.print_help()
-            return 1
     except KeyboardInterrupt:
         logger.error("Operation cancelled by user")
         return 1

@@ -1,13 +1,49 @@
 """
 Security Testing Suite for audio-extraction-analysis.
 
-Tests security aspects including:
-- Input validation and sanitization
-- Path traversal prevention
-- Command injection protection
-- Output sanitization
-- API key security
-- File permission handling
+This module provides comprehensive end-to-end security testing to ensure the application
+is protected against common security vulnerabilities and attack vectors.
+
+Security Testing Coverage:
+--------------------------
+
+1. **Input Validation & Sanitization**
+   - Path traversal attacks (directory climbing, encoded paths)
+   - Command injection attempts (shell metacharacters, command chaining)
+   - Filename sanitization (special chars, null bytes, control chars)
+   - File size validation and limits
+   - Unicode handling security (zero-width chars, RTL override, emojis)
+
+2. **Output Sanitization & Data Protection**
+   - API key redaction in logs and error messages
+   - Output content sanitization (XSS prevention, code injection)
+   - Information disclosure prevention in error messages
+   - File permission enforcement on generated files
+   - Temporary file cleanup and lifecycle management
+
+3. **API Key Security**
+   - Environment variable isolation between operations
+   - API key validation and format checking
+   - Secure storage verification (no plaintext in outputs)
+   - Prevention of key exposure in logs/errors
+
+4. **File System Security**
+   - Symbolic link handling and validation
+   - Directory traversal prevention in output paths
+   - Protection against overwriting system files
+   - Safe path resolution and canonicalization
+
+Testing Approach:
+-----------------
+Each test class focuses on a specific security domain and uses a combination of:
+- Malicious input injection to test boundary conditions
+- Mock objects to simulate attack scenarios safely
+- Output validation to ensure no sensitive data leakage
+- File system checks for permission and access controls
+
+All tests are designed to verify that the application fails securely when presented
+with malicious input, providing generic error messages without exposing internal
+system details or sensitive information.
 """
 import pytest
 import os
@@ -21,48 +57,106 @@ from .test_data_manager import TestDataManager
 
 
 class TestInputValidation(E2ETestBase, CLITestMixin, SecurityTestMixin):
-    """Test input validation and sanitization."""
+    """
+    Test input validation and sanitization across all user-controllable inputs.
+
+    This test class verifies that the application properly validates and sanitizes
+    user-provided input data to prevent security vulnerabilities including:
+
+    - **Path Traversal**: Tests directory climbing attacks using various encoding
+      techniques (URL encoding, double slashes, backslashes) to ensure the app
+      cannot be tricked into accessing files outside allowed directories.
+
+    - **Command Injection**: Validates that shell metacharacters and command
+      chaining sequences in filenames don't lead to arbitrary command execution.
+
+    - **Filename Sanitization**: Ensures special characters, control characters,
+      null bytes, and other dangerous filename components are properly handled.
+
+    - **Size Limits**: Verifies that extremely long filenames and large files
+      are rejected or handled gracefully without causing DoS conditions.
+
+    - **Unicode Security**: Tests Unicode-specific attack vectors including
+      zero-width characters, right-to-left override, and encoding exploits.
+
+    All tests verify that the application fails securely with appropriate error
+    messages that don't expose internal system details.
+    """
     
     @classmethod
     def setup_class(cls):
-        """Setup test data for security testing."""
+        """
+        Setup test data for security testing.
+
+        Initializes the test data manager and generates all required test files
+        that will be used across security tests. This includes various file types
+        and sizes needed to validate security controls.
+        """
         cls.test_data_manager = TestDataManager()
         cls.test_files = cls.test_data_manager.generate_all_test_files()
     
     def test_path_traversal_prevention(self):
-        """Test prevention of path traversal attacks."""
+        """
+        Test prevention of path traversal attacks using various techniques.
+
+        Validates that the application properly rejects attempts to access files
+        outside the intended directories using:
+        - Unix-style directory traversal (../)
+        - Windows-style directory traversal (..\\)
+        - Absolute paths (/etc/passwd)
+        - URL-encoded traversal sequences (%2f)
+        - Double-slash obfuscation (....//)
+
+        Ensures error messages are generic and don't expose sensitive system paths.
+        """
+        # Collection of path traversal attack vectors using different techniques
         malicious_paths = [
-            "../../../etc/passwd",
-            "..\\..\\..\\windows\\system32\\config\\sam",
-            "/etc/passwd",
-            "../../../../root/.ssh/id_rsa",
-            "..%2f..%2f..%2fetc%2fpasswd",  # URL encoded
-            "....//....//....//etc//passwd",  # Double slash
+            "../../../etc/passwd",                      # Unix-style directory climbing
+            "..\\..\\..\\windows\\system32\\config\\sam",  # Windows-style traversal
+            "/etc/passwd",                              # Absolute path to sensitive file
+            "../../../../root/.ssh/id_rsa",            # SSH private key access attempt
+            "..%2f..%2f..%2fetc%2fpasswd",             # URL-encoded traversal (bypass filters)
+            "....//....//....//etc//passwd",           # Double-slash obfuscation
         ]
         
         for malicious_path in malicious_paths:
             with self.subTest(path=malicious_path):
                 # Test with extract command
                 result = self.run_extract_command(input_file=malicious_path)
-                
+
+                # The attack should fail - we should never successfully access these paths
                 assert not result.success, f"Path traversal attack should fail: {malicious_path}"
-                
+
                 # Error should indicate file not found or invalid path, not expose system info
                 error_msg = result.error.lower()
-                
-                # Should not contain sensitive system paths
+
+                # Critical security check: error messages must not leak system path information
+                # Exposing paths like "/etc/" or "C:\Windows" helps attackers map the system
                 sensitive_paths = ["/etc/", "/root/", "/var/", "c:\\windows", "system32"]
                 for sensitive_path in sensitive_paths:
                     assert sensitive_path not in error_msg, \
                         f"Error message exposes sensitive path: {error_msg}"
-                
-                # Should be a generic file not found or invalid path error
+
+                # Error should be generic (file not found) rather than revealing the actual issue
+                # This prevents attackers from distinguishing between validation failures
                 expected_errors = ["not found", "no such file", "invalid", "access denied"]
                 assert any(expected in error_msg for expected in expected_errors), \
                     f"Unexpected error message for path traversal: {error_msg}"
     
     def test_command_injection_prevention(self):
-        """Test prevention of command injection attacks."""
+        """
+        Test prevention of command injection attacks in filename handling.
+
+        Verifies that shell metacharacters and command chaining sequences in
+        filenames cannot be exploited to execute arbitrary commands. Tests:
+        - Command chaining (;, &&, ||)
+        - Command substitution ($(), ``)
+        - Piping (|)
+        - SQL injection attempts in filenames
+        - Background execution (&)
+
+        Ensures failures are due to file validation, not command execution errors.
+        """
         injection_attempts = [
             "file.mp4; rm -rf /",
             "file.mp4 && cat /etc/passwd",
@@ -90,7 +184,21 @@ class TestInputValidation(E2ETestBase, CLITestMixin, SecurityTestMixin):
                         f"Error suggests command execution: {error_msg}"
     
     def test_filename_sanitization(self):
-        """Test proper sanitization of filenames with special characters."""
+        """
+        Test proper sanitization of filenames containing special characters.
+
+        Validates handling of potentially dangerous filename components including:
+        - Special characters (@#$%^&*())
+        - Null bytes (\\x00) for truncation attacks
+        - Control characters (\\n\\r\\t)
+        - XSS-style content in filenames
+        - Right-to-left override characters (\\u202e)
+        - Double extensions (.mp4.exe)
+        - Windows reserved names (CON, AUX, etc.)
+
+        Ensures the application either sanitizes these safely or fails gracefully
+        without exposing internal error details.
+        """
         special_filenames = [
             "test@#$%^&*().mp4",
             "test file with spaces.mp4",
@@ -145,7 +253,19 @@ class TestInputValidation(E2ETestBase, CLITestMixin, SecurityTestMixin):
             f"Unexpected error for long filename: {error_msg}"
     
     def test_unicode_filename_security(self):
-        """Test security aspects of Unicode filename handling."""
+        """
+        Test security aspects of Unicode filename handling.
+
+        Validates that the application properly handles Unicode characters in
+        filenames without encoding vulnerabilities or crashes. Tests:
+        - Non-Latin scripts (Cyrillic, Chinese, Japanese)
+        - Emoji characters
+        - Zero-width joiner (invisible character)
+        - Byte order mark (BOM)
+
+        Ensures that Unicode handling doesn't cause encoding errors that could
+        expose internal system details or crash the application.
+        """
         unicode_filenames = [
             "test_файл.mp4",           # Cyrillic
             "test_文件.mp4",            # Chinese
@@ -197,15 +317,60 @@ class TestInputValidation(E2ETestBase, CLITestMixin, SecurityTestMixin):
 
 
 class TestOutputSanitization(E2ETestBase, CLITestMixin, SecurityTestMixin, MockProviderMixin):
-    """Test output sanitization and data protection."""
+    """
+    Test output sanitization and protection of sensitive data in application outputs.
+
+    This test class ensures that the application properly sanitizes all output data
+    and prevents exposure of sensitive information through various channels:
+
+    - **API Key Protection**: Verifies that API keys are never exposed in logs,
+      error messages, stack traces, or any other output channel, even when errors
+      occur during API operations.
+
+    - **Content Sanitization**: Tests that output content is properly sanitized
+      to prevent XSS attacks, code injection, and other content-based exploits
+      in JSON, text, and other output formats.
+
+    - **Information Disclosure**: Ensures error messages provide generic feedback
+      without exposing internal paths, system configuration, stack traces, or
+      other implementation details that could aid attackers.
+
+    - **File Permissions**: Validates that generated output files have appropriate
+      permissions (not world-writable, readable by owner) and follow security
+      best practices for the operating system.
+
+    - **Temporary File Management**: Confirms that temporary files created during
+      processing are properly cleaned up and don't leak sensitive data to the
+      file system.
+
+    Uses mocking to safely test error conditions and edge cases without actually
+    exposing sensitive data during the test run.
+    """
     
     def setup_method(self):
-        """Setup for each test method."""
+        """
+        Setup for each test method in output sanitization tests.
+
+        Initializes the test environment with a test API key to enable testing
+        of API key redaction and security features. The test key is intentionally
+        visible here as it's used to verify the application properly redacts it
+        from all outputs.
+        """
         super().setup_method()
         self.set_test_env(DEEPGRAM_API_KEY="test_deepgram_key_12345")
     
     def test_api_key_redaction_in_logs(self):
-        """Test that API keys are not exposed in logs or error messages."""
+        """
+        Test that API keys are not exposed in logs or error messages.
+
+        Simulates an error condition where an exception message contains the API key,
+        then verifies that the application properly redacts the key before displaying
+        it to the user. Checks for:
+        - Full API key exposure
+        - Partial API key exposure (key fragments)
+
+        This is critical to prevent credential leakage through error logs.
+        """
         if "audio_only" not in self.test_files:
             pytest.skip("Audio test file not available")
         
@@ -305,7 +470,18 @@ class TestOutputSanitization(E2ETestBase, CLITestMixin, SecurityTestMixin, MockP
                         f"Error message exposes sensitive info: {sensitive} in {error_msg}"
     
     def test_output_file_permissions(self):
-        """Test that output files have appropriate permissions."""
+        """
+        Test that output files have appropriate permissions.
+
+        Validates that generated output files follow security best practices for
+        file permissions:
+        - Not world-writable (prevents unauthorized modification)
+        - Readable by owner (ensures accessibility)
+        - On Unix systems, checks for standard permission patterns (644, 600, etc.)
+
+        Improper permissions could allow unauthorized users to modify or access
+        sensitive output data.
+        """
         if "short" not in self.test_files:
             pytest.skip("Short test file not available")
         
@@ -335,7 +511,17 @@ class TestOutputSanitization(E2ETestBase, CLITestMixin, SecurityTestMixin, MockP
                 assert perms in acceptable_perms, f"Unexpected file permissions: {oct(perms)}"
     
     def test_temporary_file_cleanup(self):
-        """Test that temporary files are properly cleaned up."""
+        """
+        Test that temporary files are properly cleaned up after processing.
+
+        Verifies that the application doesn't leave sensitive data in temporary
+        files after operations complete. Checks:
+        - No new temporary files remain after processing
+        - Filters for application-related temp files (audio, extract, ffmpeg)
+        - Validates cleanup in system temp directories
+
+        Leftover temporary files could leak sensitive data or consume disk space.
+        """
         if "short" not in self.test_files:
             pytest.skip("Short test file not available")
         
@@ -374,7 +560,31 @@ class TestOutputSanitization(E2ETestBase, CLITestMixin, SecurityTestMixin, MockP
 
 
 class TestAPIKeySecurity(E2ETestBase, CLITestMixin, SecurityTestMixin):
-    """Test API key security and handling."""
+    """
+    Test comprehensive API key security throughout the application lifecycle.
+
+    This test class focuses specifically on the security aspects of API key management,
+    ensuring that sensitive credentials are properly protected at all stages:
+
+    - **Environment Isolation**: Verifies that API keys are properly isolated between
+      different operations and that changing environment variables doesn't cause
+      key leakage between contexts or operations.
+
+    - **Validation & Sanitization**: Tests that API keys are validated for format
+      and content, rejecting keys with dangerous characters, excessive length,
+      or malformed structure that could lead to injection attacks.
+
+    - **Secure Storage**: Confirms that API keys are never stored in plaintext in
+      output files, logs, configuration files, or any persistent storage that
+      could be accessed by unauthorized users.
+
+    - **Exposure Prevention**: Ensures API keys (including partial keys and key
+      fragments) are never exposed in error messages, debug output, stack traces,
+      or any other user-visible output channel.
+
+    Uses mocking to test API key handling without requiring actual API credentials
+    or making external API calls during testing.
+    """
     
     def test_api_key_environment_isolation(self):
         """Test that API keys are properly isolated between operations."""
@@ -454,7 +664,32 @@ class TestAPIKeySecurity(E2ETestBase, CLITestMixin, SecurityTestMixin):
 
 
 class TestFileSystemSecurity(E2ETestBase, CLITestMixin, SecurityTestMixin):
-    """Test file system security aspects."""
+    """
+    Test file system security and safe file operations.
+
+    This test class validates that the application safely interacts with the file
+    system and prevents unauthorized access or modification of files:
+
+    - **Symbolic Link Handling**: Tests how the application handles symbolic links
+      to ensure they cannot be exploited for privilege escalation, unauthorized
+      file access, or time-of-check-time-of-use (TOCTOU) race conditions.
+
+    - **Directory Traversal Prevention**: Verifies that output paths cannot use
+      directory traversal sequences (.., ~, absolute paths) to write files to
+      unauthorized locations outside the intended output directory.
+
+    - **File Overwrite Protection**: Ensures the application cannot be tricked
+      into overwriting critical system files, configuration files, or other
+      important files that should never be modified by the application.
+
+    - **Path Canonicalization**: Confirms that all file paths are properly
+      resolved and canonicalized before use to prevent bypassing security
+      checks through symbolic links, relative paths, or other path manipulation
+      techniques.
+
+    All tests verify that the application operates within its designated file
+    system boundaries and fails securely when presented with malicious paths.
+    """
     
     def test_symlink_handling(self):
         """Test handling of symbolic links."""
