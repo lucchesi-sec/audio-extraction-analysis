@@ -193,31 +193,141 @@ class Config:
     # ========== Deepgram Settings ==========
     DEEPGRAM_MODEL: str = field(default_factory=lambda: _getenv("DEEPGRAM_MODEL", "nova-2"))
     DEEPGRAM_LANGUAGE: str = field(default_factory=lambda: _getenv("DEEPGRAM_LANGUAGE", "en"))
-    DEEPGRAM_TIMEOUT: int = field(default_factory=lambda: int(_getenv("DEEPGRAM_TIMEOUT", "600")))
+    DEEPGRAM_TIMEOUT: int = field(default_factory=lambda: _getenv_int("DEEPGRAM_TIMEOUT", 600))
     DEEPGRAM_PUNCTUATE: bool = field(default_factory=lambda: _parse_bool(_getenv("DEEPGRAM_PUNCTUATE", "true")))
     DEEPGRAM_DIARIZE: bool = field(default_factory=lambda: _parse_bool(_getenv("DEEPGRAM_DIARIZE", "false")))
     DEEPGRAM_SMART_FORMAT: bool = field(default_factory=lambda: _parse_bool(_getenv("DEEPGRAM_SMART_FORMAT", "true")))
 
     # ========== ElevenLabs Settings ==========
     ELEVENLABS_MODEL: str = field(default_factory=lambda: _getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2"))
-    ELEVENLABS_TIMEOUT: int = field(default_factory=lambda: int(_getenv("ELEVENLABS_TIMEOUT", "600")))
+    ELEVENLABS_TIMEOUT: int = field(default_factory=lambda: _getenv_int("ELEVENLABS_TIMEOUT", 600))
 
     # ========== Whisper Settings ==========
     WHISPER_MODEL: str = field(default_factory=lambda: _getenv("WHISPER_MODEL", "base"))
     WHISPER_DEVICE: str = field(default_factory=lambda: _getenv("WHISPER_DEVICE", "cpu"))
     WHISPER_COMPUTE_TYPE: str = field(default_factory=lambda: _getenv("WHISPER_COMPUTE_TYPE", "int8"))
-    WHISPER_TIMEOUT: int = field(default_factory=lambda: int(_getenv("WHISPER_TIMEOUT", "600")))
+    WHISPER_TIMEOUT: int = field(default_factory=lambda: _getenv_int("WHISPER_TIMEOUT", 600))
 
     # ========== Parakeet Settings ==========
     PARAKEET_MODEL: str = field(default_factory=lambda: _getenv("PARAKEET_MODEL", "stt_en_conformer_ctc_large"))
     PARAKEET_DEVICE: str = field(default_factory=lambda: _getenv("PARAKEET_DEVICE", "cpu"))
-    PARAKEET_BATCH_SIZE: int = field(default_factory=lambda: int(_getenv("PARAKEET_BATCH_SIZE", "1")))
+    PARAKEET_BATCH_SIZE: int = field(default_factory=lambda: _getenv_int("PARAKEET_BATCH_SIZE", 1))
     PARAKEET_USE_FP16: bool = field(default_factory=lambda: _parse_bool(_getenv("PARAKEET_USE_FP16", "false")))
 
     def __post_init__(self):
-        """Ensure required directories exist."""
+        """Validate configuration and ensure required directories exist."""
+        # Create required directories
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Validate log level
+        valid_log_levels = {'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'}
+        if self.log_level not in valid_log_levels:
+            raise ValueError(
+                f"Invalid LOG_LEVEL='{self.log_level}'. "
+                f"Must be one of: {', '.join(sorted(valid_log_levels))}"
+            )
+
+        # Validate output format
+        valid_formats = {'text', 'json', 'markdown', 'csv'}
+        if self.output_format not in valid_formats:
+            raise ValueError(
+                f"Invalid OUTPUT_FORMAT='{self.output_format}'. "
+                f"Must be one of: {', '.join(sorted(valid_formats))}"
+            )
+
+        # Validate numeric ranges - positive values
+        if self.max_file_size <= 0:
+            raise ValueError(f"MAX_FILE_SIZE must be positive, got: {self.max_file_size}")
+
+        if self.max_workers <= 0:
+            raise ValueError(f"MAX_WORKERS must be positive, got: {self.max_workers}")
+
+        if self.max_concurrent_requests <= 0:
+            raise ValueError(f"MAX_CONCURRENT_REQUESTS must be positive, got: {self.max_concurrent_requests}")
+
+        if self.thread_pool_size <= 0:
+            raise ValueError(f"THREAD_POOL_SIZE must be positive, got: {self.thread_pool_size}")
+
+        if self.process_pool_size <= 0:
+            raise ValueError(f"PROCESS_POOL_SIZE must be positive, got: {self.process_pool_size}")
+
+        if self.rate_limit_window <= 0:
+            raise ValueError(f"RATE_LIMIT_WINDOW must be positive, got: {self.rate_limit_window}")
+
+        if self.rate_limit_max_requests <= 0:
+            raise ValueError(f"RATE_LIMIT_MAX_REQUESTS must be positive, got: {self.rate_limit_max_requests}")
+
+        if self.cache_ttl <= 0:
+            raise ValueError(f"CACHE_TTL must be positive, got: {self.cache_ttl}")
+
+        if self.cache_max_size <= 0:
+            raise ValueError(f"CACHE_MAX_SIZE must be positive, got: {self.cache_max_size}")
+
+        if self.batch_size <= 0:
+            raise ValueError(f"BATCH_SIZE must be positive, got: {self.batch_size}")
+
+        # Validate timeout consistency
+        if self.connect_timeout > self.global_timeout:
+            raise ValueError(
+                f"CONNECT_TIMEOUT ({self.connect_timeout}s) cannot exceed "
+                f"GLOBAL_TIMEOUT ({self.global_timeout}s)"
+            )
+
+        if self.read_timeout > self.global_timeout:
+            raise ValueError(
+                f"READ_TIMEOUT ({self.read_timeout}s) cannot exceed "
+                f"GLOBAL_TIMEOUT ({self.global_timeout}s)"
+            )
+
+        if self.write_timeout > self.global_timeout:
+            raise ValueError(
+                f"WRITE_TIMEOUT ({self.write_timeout}s) cannot exceed "
+                f"GLOBAL_TIMEOUT ({self.global_timeout}s)"
+            )
+
+        # Validate retry settings
+        if self.max_retries < 0:
+            raise ValueError(f"MAX_API_RETRIES must be non-negative, got: {self.max_retries}")
+
+        if self.retry_delay < 0:
+            raise ValueError(f"API_RETRY_DELAY must be non-negative, got: {self.retry_delay}")
+
+        if self.max_retry_delay < self.retry_delay:
+            raise ValueError(
+                f"MAX_RETRY_DELAY ({self.max_retry_delay}s) must be >= "
+                f"API_RETRY_DELAY ({self.retry_delay}s)"
+            )
+
+        if self.retry_exponential_base <= 1.0:
+            raise ValueError(
+                f"RETRY_EXPONENTIAL_BASE must be > 1.0, got: {self.retry_exponential_base}"
+            )
+
+        # Validate circuit breaker settings
+        if self.circuit_breaker_failure_threshold <= 0:
+            raise ValueError(
+                f"CIRCUIT_BREAKER_FAILURE_THRESHOLD must be positive, "
+                f"got: {self.circuit_breaker_failure_threshold}"
+            )
+
+        if self.circuit_breaker_recovery_timeout <= 0:
+            raise ValueError(
+                f"CIRCUIT_BREAKER_RECOVERY_TIMEOUT must be positive, "
+                f"got: {self.circuit_breaker_recovery_timeout}"
+            )
+
+        # Validate environment
+        valid_environments = {'development', 'staging', 'production', 'test'}
+        if self.environment.lower() not in valid_environments:
+            # Warning instead of error for backward compatibility
+            import warnings
+            warnings.warn(
+                f"Environment '{self.environment}' is not standard. "
+                f"Consider using: {', '.join(sorted(valid_environments))}",
+                UserWarning,
+                stacklevel=2
+            )
 
     def __repr__(self) -> str:
         """Return repr with redacted API keys for security."""
@@ -321,7 +431,7 @@ class Config:
     @classmethod
     def validate(cls, provider: str = "deepgram") -> None:
         """Validate configuration for specified provider."""
-        config = cls()
+        config = get_config()
 
         if provider == "deepgram":
             if not config.DEEPGRAM_API_KEY:
@@ -361,7 +471,7 @@ class Config:
     @classmethod
     def get_deepgram_api_key(cls) -> str:
         """Get Deepgram API key with validation."""
-        config = cls()
+        config = get_config()
         if not config.DEEPGRAM_API_KEY:
             raise ValueError("DEEPGRAM_API_KEY not configured")
         return config.DEEPGRAM_API_KEY
@@ -369,7 +479,7 @@ class Config:
     @classmethod
     def get_elevenlabs_api_key(cls) -> str:
         """Get ElevenLabs API key with validation."""
-        config = cls()
+        config = get_config()
         if not config.ELEVENLABS_API_KEY:
             raise ValueError("ELEVENLABS_API_KEY not configured")
         return config.ELEVENLABS_API_KEY
@@ -377,7 +487,7 @@ class Config:
     @classmethod
     def get_gemini_api_key(cls) -> str:
         """Get Gemini API key with validation."""
-        config = cls()
+        config = get_config()
         if not config.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY not configured")
         return config.GEMINI_API_KEY
@@ -385,7 +495,7 @@ class Config:
     @classmethod
     def is_configured(cls, provider: Optional[str] = None) -> bool:
         """Check if provider is configured."""
-        config = cls()
+        config = get_config()
 
         if provider == "deepgram":
             return config.DEEPGRAM_API_KEY is not None
@@ -411,7 +521,7 @@ class Config:
     @classmethod
     def get_available_providers(cls) -> List[str]:
         """Get list of configured providers."""
-        config = cls()
+        config = get_config()
         available = []
 
         if config.DEEPGRAM_API_KEY:
@@ -438,7 +548,7 @@ class Config:
     @classmethod
     def validate_file_extension(cls, file_path: Path) -> bool:
         """Validate file extension."""
-        config = cls()
+        config = get_config()
         return file_path.suffix.lower() in config.allowed_extensions
 
 

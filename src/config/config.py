@@ -1,6 +1,12 @@
 """Backward compatibility shim for config imports.
 
-This file exists to support existing imports like:
+DEPRECATED: This import path is deprecated as of v1.1.0.
+Please update imports to:
+    from src.config import Config, get_config
+
+This shim will be removed in v2.0.0.
+
+Legacy import patterns still supported:
 - from .config.config import Config
 - from ..config.config import Config
 """
