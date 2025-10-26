@@ -1,6 +1,6 @@
 """Caching layer for transcription results."""
 
-from .backends import DiskCache, HybridCache, InMemoryCache, RedisCache
+from .backends import DiskCache, InMemoryCache
 from .transcription_cache import (
     CacheBackend,
     CacheEntry,
@@ -17,8 +17,6 @@ __all__ = [
     "CachePolicy",
     "CacheStats",
     "DiskCache",
-    "HybridCache",
     "InMemoryCache",
-    "RedisCache",
     "TranscriptionCache",
 ]

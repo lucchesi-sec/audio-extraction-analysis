@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Type
 
-from src.cache.backends import InMemoryCache, DiskCache, HybridCache
+from src.cache.backends import InMemoryCache, DiskCache
 from src.cache.common import BaseCache, CacheUtils
 from src.cache.transcription_cache import CacheEntry, CacheKey
 
@@ -44,15 +44,10 @@ class TestCacheContract:
     def cache_backends(self) -> List[BaseCache]:
         """Create instances of all cache backends for testing."""
         temp_dir = Path(tempfile.mkdtemp())
-        
+
         return [
             InMemoryCache(max_size_mb=1),
             DiskCache(cache_dir=temp_dir, max_size_mb=1),
-            HybridCache(
-                l1_cache=InMemoryCache(max_size_mb=1),
-                l2_cache=DiskCache(cache_dir=temp_dir / "hybrid", max_size_mb=1),
-                l3_cache=None
-            )
         ]
     
     def test_implements_base_cache_protocol(self, cache_backends: List[BaseCache]):

@@ -11,7 +11,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from src.cache.backends import DiskCache, RedisCache
+from src.cache.backends import DiskCache
 from src.cache.transcription_cache import CacheKey, CacheEntry
 from src.models.transcription import TranscriptionResult
 
@@ -58,63 +58,6 @@ def test_disk_cache_safe_serialization():
         assert retrieved_entry.value.transcript == "Test transcript", "Transcript content mismatch"
         
         print("✓ DiskCache safe serialization test passed")
-
-
-def test_redis_cache_safe_serialization():
-    """Test that RedisCache uses safe JSON serialization (if Redis is available)."""
-    try:
-        import redis
-        
-        # Try to connect to Redis (skip if not available)
-        try:
-            cache = RedisCache()
-            # Test connection
-            cache.redis.ping()
-        except (redis.ConnectionError, redis.TimeoutError):
-            print("⚠ Redis not available, skipping RedisCache test")
-            return
-        
-        # Create a test transcription result
-        transcription = TranscriptionResult(
-            transcript="Test transcript",
-            duration=10.0,
-            generated_at=datetime.now(),
-            audio_file="test.mp3",
-            provider_name="test_provider"
-        )
-        
-        # Create a cache entry
-        cache_key = CacheKey(
-            file_hash="test_hash",
-            provider="test_provider", 
-            settings_hash="test_settings"
-        )
-        
-        entry = CacheEntry(
-            key=cache_key,
-            value=transcription,
-            size=1024,
-            ttl=3600
-        )
-        
-        # Store in cache
-        key_str = str(cache_key)
-        success = cache.put(key_str, entry)
-        assert success, "Failed to store entry in Redis cache"
-        
-        # Retrieve from cache
-        retrieved_entry = cache.get(key_str)
-        assert retrieved_entry is not None, "Failed to retrieve entry from Redis cache"
-        assert isinstance(retrieved_entry.value, TranscriptionResult), "Retrieved value is not TranscriptionResult"
-        assert retrieved_entry.value.transcript == "Test transcript", "Transcript content mismatch"
-        
-        # Clean up
-        cache.delete(key_str)
-        
-        print("✓ RedisCache safe serialization test passed")
-        
-    except ImportError:
-        print("⚠ Redis package not available, skipping RedisCache test")
 
 
 def test_no_pickle_imports():
@@ -179,18 +122,17 @@ def test_serialization_safety():
 if __name__ == "__main__":
     print("Running security fix verification tests...")
     print("=" * 50)
-    
+
     try:
         test_no_pickle_imports()
-        test_serialization_safety() 
+        test_serialization_safety()
         test_disk_cache_safe_serialization()
-        test_redis_cache_safe_serialization()
-        
+
         print("=" * 50)
         print("🎉 All security fix tests passed!")
         print("✅ RCE vulnerability has been successfully fixed")
         print("✅ Cache system now uses safe JSON serialization")
-        
+
     except Exception as e:
         print("=" * 50)
         print(f"❌ Test failed: {e}")
