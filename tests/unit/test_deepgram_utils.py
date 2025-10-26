@@ -95,6 +95,31 @@ class TestDetectMimetype:
         path = Path("test_file.")
         assert detect_mimetype(path) == "audio/mp3"
 
+    def test_detect_mimetype_windows_path(self) -> None:
+        """Test Windows-style path handling for cross-platform compatibility."""
+        path = Path("C:\\Users\\Audio\\recording.wav")
+        assert detect_mimetype(path) == "audio/wav"
+
+    def test_detect_mimetype_complex_nested_path(self) -> None:
+        """Test deeply nested path with multiple directory levels."""
+        path = Path("/var/media/projects/2024/audio/final/master.flac")
+        assert detect_mimetype(path) == "audio/flac"
+
+    def test_detect_mimetype_backup_extension(self) -> None:
+        """Test file with backup extension pattern (should default)."""
+        path = Path("audio.mp3.bak")
+        assert detect_mimetype(path) == "audio/mp3"
+
+    def test_detect_mimetype_numeric_extension(self) -> None:
+        """Test file with numeric extension defaults correctly."""
+        path = Path("audio.123")
+        assert detect_mimetype(path) == "audio/mp3"
+
+    def test_detect_mimetype_very_long_extension(self) -> None:
+        """Test file with unusually long extension defaults correctly."""
+        path = Path("audio.thisisaverylongextension")
+        assert detect_mimetype(path) == "audio/mp3"
+
 
 class TestBuildPrerecordedOptions:
     """Test suite for building Deepgram prerecorded options."""
@@ -247,3 +272,51 @@ class TestBuildPrerecordedOptions:
 
             call_kwargs = mock_options_class.call_args[1]
             assert call_kwargs["language"] == language
+
+    def test_build_prerecorded_options_with_special_characters(self) -> None:
+        """Test language code with special characters (edge case)."""
+        mock_deepgram = MagicMock()
+        mock_options_class = MagicMock()
+        mock_instance = MagicMock()
+        mock_options_class.return_value = mock_instance
+        mock_deepgram.PrerecordedOptions = mock_options_class
+
+        with patch.dict("sys.modules", {"deepgram": mock_deepgram}):
+            language = "en-US_variant"
+            result = build_prerecorded_options(language)
+
+            call_kwargs = mock_options_class.call_args[1]
+            assert call_kwargs["language"] == language
+            assert result is mock_instance
+
+    def test_build_prerecorded_options_with_numeric_language(self) -> None:
+        """Test language parameter with numeric values (unusual but valid string)."""
+        mock_deepgram = MagicMock()
+        mock_options_class = MagicMock()
+        mock_instance = MagicMock()
+        mock_options_class.return_value = mock_instance
+        mock_deepgram.PrerecordedOptions = mock_options_class
+
+        with patch.dict("sys.modules", {"deepgram": mock_deepgram}):
+            language = "lang-123"
+            result = build_prerecorded_options(language)
+
+            call_kwargs = mock_options_class.call_args[1]
+            assert call_kwargs["language"] == language
+            assert result is mock_instance
+
+    def test_build_prerecorded_options_with_long_language_code(self) -> None:
+        """Test language parameter with very long string."""
+        mock_deepgram = MagicMock()
+        mock_options_class = MagicMock()
+        mock_instance = MagicMock()
+        mock_options_class.return_value = mock_instance
+        mock_deepgram.PrerecordedOptions = mock_options_class
+
+        with patch.dict("sys.modules", {"deepgram": mock_deepgram}):
+            language = "en-US-x-very-long-variant-name"
+            result = build_prerecorded_options(language)
+
+            call_kwargs = mock_options_class.call_args[1]
+            assert call_kwargs["language"] == language
+            assert result is mock_instance
