@@ -132,13 +132,26 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
         return open(audio_file_path, "rb")
 
     def _submit_transcription_job(self, client, audio_source, mimetype: str, options) -> Any:
-        """Submit the prerecorded transcription request with streaming support.
+        """Submit the prerecorded transcription request to Deepgram API with streaming.
+
+        Uses the Deepgram SDK's file streaming capabilities to upload audio data efficiently.
+        The SDK handles chunked uploads internally when a file handle is provided, reducing
+        memory overhead compared to loading the entire file.
 
         Args:
-            client: Deepgram client
-            audio_source: File handle or bytes for audio data
-            mimetype: MIME type for audio
-            options: PrerecordedOptions
+            client: Configured DeepgramClient instance
+            audio_source: File handle (BinaryIO) opened in binary read mode
+            mimetype: MIME type string for the audio file (e.g., 'audio/wav')
+            options: PrerecordedOptions with enabled features and language settings
+
+        Returns:
+            PrerecordedResponse: Deepgram API response containing transcription results,
+                metadata, and enabled feature outputs (speakers, topics, intents, etc.)
+
+        Raises:
+            ConnectionError: If the API request fails due to network issues
+            TimeoutError: If the request exceeds the configured timeout
+            ValueError: If the API rejects the request due to invalid parameters
         """
         # DG SDK: deepgram.listen.prerecorded.v("1").transcribe_file(...)
         # Pass file handle directly - SDK should handle streaming internally
@@ -149,12 +162,25 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
     def _parse_response(
         self, response: Any, audio_file_path: Path, language: str
     ) -> TranscriptionResult:
-        """Parse Deepgram response into TranscriptionResult with all features.
+        """Parse Deepgram API response into structured TranscriptionResult.
+
+        Extracts and organizes all available features from the Deepgram response including:
+        - Base transcript and duration (always present)
+        - Summary (if summarization was enabled)
+        - Topics and chapters (from topic detection)
+        - Intents (from intent analysis)
+        - Sentiment distribution (from sentiment analysis)
+        - Speaker-separated utterances (from diarization)
+        - Speaker time statistics
 
         Args:
-            response: Deepgram SDK response object
-            audio_file_path: Source audio path
-            language: Requested language
+            response: PrerecordedResponse object from Deepgram SDK
+            audio_file_path: Path to the source audio file for metadata
+            language: Language code used for transcription
+
+        Returns:
+            TranscriptionResult: Comprehensive result object with all extracted features
+                and metadata populated
         """
         # Extract transcript and duration (required fields)
         transcript = response.results.channels[0].alternatives[0].transcript
@@ -169,11 +195,13 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
             provider_features=self.get_supported_features(),
         )
 
-        # Summary
+        # ---- Extract AI-powered features ----
+
+        # Automatic summary generation
         if hasattr(response.results, "summary") and response.results.summary:
             result.summary = response.results.summary.short
 
-        # Topics -> Chapters + topic counts
+        # Topic detection: Build chapters and aggregate topic mention counts
         if hasattr(response.results, "topics") and response.results.topics:
             for topic_segment in response.results.topics.segments:
                 chapter = TranscriptionChapter(
@@ -189,20 +217,20 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
                     tname = topic.topic
                     result.topics[tname] = result.topics.get(tname, 0) + 1
 
-        # Intents
+        # Intent analysis: Extract detected user intents
         if hasattr(response.results, "intents") and response.results.intents:
             for segment in response.results.intents.segments:
                 for intent in segment.intents:
                     result.intents.append(intent.intent)
 
-        # Sentiments
+        # Sentiment analysis: Count positive/negative/neutral segments
         if hasattr(response.results, "sentiments") and response.results.sentiments:
             for segment in response.results.sentiments.segments:
                 if hasattr(segment, "sentiment"):
                     s = segment.sentiment
                     result.sentiment_distribution[s] = result.sentiment_distribution.get(s, 0) + 1
 
-        # Utterances + Speakers
+        # Speaker diarization: Extract speaker-separated utterances and calculate statistics
         if hasattr(response.results, "utterances") and response.results.utterances:
             speaker_times: Dict[int, float] = {}
             for utterance in response.results.utterances:
@@ -219,7 +247,7 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
                     )
                 )
 
-            # Speaker summaries
+            # Calculate per-speaker time statistics and participation percentages
             safe_total = duration if duration and duration > 0 else 1.0
             for speaker_id, total_time in speaker_times.items():
                 percentage = (total_time / safe_total) * 100 if safe_total > 0 else 0.0
@@ -232,6 +260,11 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
         return result
 
     def _log_file_info(self, audio_file_path: Path) -> None:
+        """Log audio file size information for debugging and monitoring.
+
+        Args:
+            audio_file_path: Path to the audio file to inspect
+        """
         try:
             file_size_mb = audio_file_path.stat().st_size / (1024 * 1024)
             logger.info(f"File size: {file_size_mb:.2f} MB")
@@ -309,17 +342,36 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
         ]
 
     def _format_time(self, seconds: float) -> str:
-        """Convert seconds to HH:MM:SS format."""
+        """Convert seconds to human-readable HH:MM:SS format.
+
+        Args:
+            seconds: Time duration in seconds (can include fractional seconds)
+
+        Returns:
+            str: Formatted time string in HH:MM:SS format (e.g., "01:23:45")
+        """
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
     async def health_check_async(self) -> Dict[str, Any]:
-        """Perform health check for Deepgram service.
+        """Perform health check for Deepgram service availability and configuration.
+
+        Validates the Deepgram provider by checking:
+        - API key format and presence
+        - SDK availability and import success
+        - Client instantiation capability
+
+        Note: This is a lightweight check that validates configuration and SDK availability
+        but does not make actual API calls to Deepgram servers.
 
         Returns:
-            Dictionary containing health status information
+            Dict[str, Any]: Health status dictionary with keys:
+                - healthy (bool): Overall health status
+                - status (str): Status code (operational/invalid_api_key/sdk_not_available/error)
+                - response_time_ms (float): Check duration in milliseconds
+                - details (dict): Provider-specific diagnostic information
         """
         start_time = time.time()
 
@@ -327,7 +379,7 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
             # Import Deepgram SDK
             from deepgram import DeepgramClient
 
-            # Validate API key format (Deepgram keys are typically 40+ characters)
+            # Validate API key format - Deepgram keys are typically 32-64 hex characters
             if not self.api_key or len(self.api_key) < 20:
                 return {
                     "healthy": False,
@@ -412,7 +464,8 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
             options = self._build_options(language)
             mimetype = self._detect_mimetype(audio_file_path)
 
-            # Submit job with streaming (file handle instead of bytes)
+            # Submit transcription job using file handle for efficient streaming upload
+            # This prevents loading entire file into memory for large audio files
             logger.info("Sending to Deepgram Nova 3 with streaming upload...")
             try:
                 with self._open_audio_file(audio_file_path) as audio_source:
@@ -453,15 +506,29 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
     def transcribe(
         self, audio_file_path: Path, language: str = "en"
     ) -> Optional[TranscriptionResult]:
-        """Synchronous wrapper for transcription using asyncio.run.
+        """Synchronous transcription method for blocking I/O contexts.
 
-        This avoids edge cases when external code patches event loop functions
-        and ensures the coroutine is properly awaited.
+        This method provides a synchronous interface to the async transcription implementation.
+        It handles event loop management internally and is safe to call from non-async code.
+        Prefer using `transcribe_async()` directly if you're already in an async context.
+
+        Args:
+            audio_file_path: Path to the audio file to transcribe
+            language: ISO 639-1 language code (default: 'en')
+
+        Returns:
+            Optional[TranscriptionResult]: Complete transcription result with all features,
+                or None if transcription fails
+
+        Note:
+            This method creates its own event loop. If called from an existing async context,
+            it will attempt to create a new loop to avoid conflicts.
         """
         try:
             return asyncio.run(self.transcribe_async(audio_file_path, language))
         except (RuntimeError, ValueError, ImportError, OSError) as e:
-            # If already in a running loop (unlikely in CLI use), fall back to a new loop
+            # Handle edge case: if called from async context with running event loop,
+            # create a new isolated loop to avoid conflicts
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
