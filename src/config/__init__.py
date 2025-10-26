@@ -1,160 +1,179 @@
-"""Configuration management facade for backward compatibility.
-
-This module provides a backward-compatible interface to the refactored configuration system.
-Existing code can continue using the Config class while benefiting from the modular architecture.
-"""
-from __future__ import annotations
-
-import logging
+"""Simplified configuration management using environment variables."""
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-# Import modular configuration components
-from .base import ConfigPriority, GlobalConfig, get_global_config
-from .performance import PerformanceConfig, get_performance_config
-
-# Import provider configurations
-from .providers import (
-    DeepgramConfig,
-    ElevenLabsConfig,
-    ParakeetConfig,
-    WhisperConfig,
-    get_deepgram_config,
-    get_elevenlabs_config,
-    get_parakeet_config,
-    get_whisper_config,
-)
-from .security import SecurityConfig, get_security_config
-from .ui import UIConfig, get_ui_config
-from .validation import (
-    CircuitBreakerConfigModel,
-    ConfigValidator,
-    FileConfigModel,
-    RetryConfigModel,
-    ValidationLevel,
-    create_config_validator,
-)
-
-logger = logging.getLogger(__name__)
+from typing import List, Optional
 
 
+def _parse_bool(value: str | bool | None) -> bool:
+    """Parse boolean value from various formats."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes", "on", "enabled")
+    return bool(value)
+
+
+def _parse_list(value: str | List[str] | None, delimiter: str = ",") -> List[str]:
+    """Parse list value from string or return as-is if already a list."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(delimiter) if item.strip()]
+    return [] if value is None else [value]
+
+
+def _getenv(key: str, default: str = "") -> str:
+    """Get environment variable with default."""
+    return os.getenv(key, default)
+
+
+@dataclass
 class Config:
-    """Backward-compatible configuration class that delegates to modular components.
+    """Application configuration loaded from environment variables."""
 
-    This class maintains the original interface while using the new modular
-    configuration system under the hood.
-    """
+    # ========== Application Settings ==========
+    app_name: str = field(default_factory=lambda: _getenv("APP_NAME", "audio-extraction-analysis"))
+    app_version: str = field(default_factory=lambda: _getenv("APP_VERSION", "1.0.0"))
+    environment: str = field(default_factory=lambda: _getenv("ENVIRONMENT", "production"))
 
-    # Class-level instances for singleton pattern
-    _global_config: Optional[GlobalConfig] = None
-    _security_config: Optional[SecurityConfig] = None
-    _performance_config: Optional[PerformanceConfig] = None
-    _ui_config: Optional[UIConfig] = None
-    _provider_configs: Dict[str, Any] = {}
-    _validator: Optional[ConfigValidator] = None
+    # ========== Paths ==========
+    data_dir: Path = field(default_factory=lambda: Path(_getenv("DATA_DIR", "./data")))
+    cache_dir: Path = field(default_factory=lambda: Path(_getenv("CACHE_DIR", "./cache")))
+    temp_dir: Path = field(default_factory=lambda: Path(_getenv("TEMP_DIR", "/tmp")))
 
-    def __init__(self):
-        """Initialize configuration by loading all modules."""
-        # Initialize modular configurations
-        self._global_config = get_global_config()
-        self._security_config = get_security_config()
-        self._performance_config = get_performance_config()
-        self._ui_config = get_ui_config()
+    # ========== File Handling ==========
+    max_file_size: int = field(default_factory=lambda: int(_getenv("MAX_FILE_SIZE", "100000000")))
+    allowed_extensions: List[str] = field(
+        default_factory=lambda: _parse_list(_getenv("ALLOWED_EXTENSIONS", ".mp3,.wav,.m4a,.flac,.ogg,.aac"))
+    )
 
-        # Initialize validator
-        validation_level = os.getenv("CONFIG_VALIDATION_LEVEL", "normal")
-        self._validator = create_config_validator(validation_level)
+    # ========== Logging ==========
+    log_level: str = field(default_factory=lambda: _getenv("LOG_LEVEL", "INFO").upper())
+    log_format: str = field(
+        default_factory=lambda: _getenv("LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    log_file: Optional[str] = field(default_factory=lambda: _getenv("LOG_FILE") or None)
+    log_to_console: bool = field(default_factory=lambda: _parse_bool(_getenv("LOG_TO_CONSOLE", "true")))
 
-        # Cache provider configurations lazily
-        self._provider_configs = {}
+    # ========== Provider Settings ==========
+    default_provider: str = field(default_factory=lambda: _getenv("DEFAULT_TRANSCRIPTION_PROVIDER", "deepgram"))
+    fallback_providers: List[str] = field(
+        default_factory=lambda: _parse_list(_getenv("FALLBACK_PROVIDERS", "elevenlabs,whisper"))
+    )
 
-        # Log configuration loading
-        logger.info("Configuration system initialized with modular architecture")
+    # ========== Language Settings ==========
+    default_language: str = field(default_factory=lambda: _getenv("DEFAULT_LANGUAGE", "en"))
+    supported_languages: List[str] = field(
+        default_factory=lambda: _parse_list(_getenv("SUPPORTED_LANGUAGES", "en,es,fr,de,it,pt,ru,ja,ko,zh"))
+    )
 
-    # ========== API Key Properties (Backward Compatibility) ==========
+    # ========== Feature Flags ==========
+    enable_caching: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_CACHING", "true")))
+    enable_retries: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_RETRIES", "true")))
+    enable_health_checks: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_HEALTH_CHECKS", "true")))
+    enable_metrics: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_METRICS", "false")))
 
-    @property
-    def DEEPGRAM_API_KEY(self) -> Optional[str]:
-        """Get Deepgram API key."""
-        try:
-            return self._security_config.get_api_key("deepgram", validate=False)
-        except ValueError:
-            return None
+    # ========== API Keys ==========
+    DEEPGRAM_API_KEY: Optional[str] = field(default_factory=lambda: _getenv("DEEPGRAM_API_KEY") or None)
+    ELEVENLABS_API_KEY: Optional[str] = field(default_factory=lambda: _getenv("ELEVENLABS_API_KEY") or None)
+    GEMINI_API_KEY: Optional[str] = field(default_factory=lambda: _getenv("GEMINI_API_KEY") or None)
+    OPENAI_API_KEY: Optional[str] = field(default_factory=lambda: _getenv("OPENAI_API_KEY") or None)
+    ANTHROPIC_API_KEY: Optional[str] = field(default_factory=lambda: _getenv("ANTHROPIC_API_KEY") or None)
 
-    @property
-    def ELEVENLABS_API_KEY(self) -> Optional[str]:
-        """Get ElevenLabs API key."""
-        try:
-            return self._security_config.get_api_key("elevenlabs", validate=False)
-        except ValueError:
-            return None
+    # ========== Security Settings ==========
+    enable_api_key_validation: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_API_KEY_VALIDATION", "true")))
+    enable_rate_limiting: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_RATE_LIMITING", "true")))
+    enable_input_sanitization: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_INPUT_SANITIZATION", "true")))
+    rate_limit_window: int = field(default_factory=lambda: int(_getenv("RATE_LIMIT_WINDOW", "60")))
+    rate_limit_max_requests: int = field(default_factory=lambda: int(_getenv("RATE_LIMIT_MAX_REQUESTS", "100")))
+    ssl_verify: bool = field(default_factory=lambda: _parse_bool(_getenv("SSL_VERIFY", "true")))
+    request_timeout: int = field(default_factory=lambda: int(_getenv("REQUEST_TIMEOUT", "30")))
 
-    @property
-    def GEMINI_API_KEY(self) -> Optional[str]:
-        """Get Gemini API key."""
-        try:
-            return self._security_config.get_api_key("gemini", validate=False)
-        except ValueError:
-            return None
+    # ========== Performance Settings ==========
+    max_workers: int = field(default_factory=lambda: int(_getenv("MAX_WORKERS", "4")))
+    max_concurrent_requests: int = field(default_factory=lambda: int(_getenv("MAX_CONCURRENT_REQUESTS", "10")))
+    thread_pool_size: int = field(default_factory=lambda: int(_getenv("THREAD_POOL_SIZE", "10")))
+    process_pool_size: int = field(default_factory=lambda: int(_getenv("PROCESS_POOL_SIZE", "4")))
 
-    # ========== Provider Configuration Properties ==========
+    # ========== Timeout Settings ==========
+    global_timeout: int = field(default_factory=lambda: int(_getenv("GLOBAL_TIMEOUT", "600")))
+    connect_timeout: int = field(default_factory=lambda: int(_getenv("CONNECT_TIMEOUT", "10")))
+    read_timeout: int = field(default_factory=lambda: int(_getenv("READ_TIMEOUT", "30")))
+    write_timeout: int = field(default_factory=lambda: int(_getenv("WRITE_TIMEOUT", "30")))
 
-    @property
-    def WHISPER_MODEL(self) -> str:
-        """Get Whisper model."""
-        if "whisper" not in self._provider_configs:
-            self._provider_configs["whisper"] = get_whisper_config()
-        return self._provider_configs["whisper"].model.value
+    # ========== Retry Settings ==========
+    max_retries: int = field(default_factory=lambda: int(_getenv("MAX_API_RETRIES", "3")))
+    retry_delay: float = field(default_factory=lambda: float(_getenv("API_RETRY_DELAY", "1.0")))
+    max_retry_delay: float = field(default_factory=lambda: float(_getenv("MAX_RETRY_DELAY", "60.0")))
+    retry_exponential_base: float = field(default_factory=lambda: float(_getenv("RETRY_EXPONENTIAL_BASE", "2.0")))
+    retry_jitter: bool = field(default_factory=lambda: _parse_bool(_getenv("RETRY_JITTER_ENABLED", "true")))
 
-    @property
-    def WHISPER_DEVICE(self) -> str:
-        """Get Whisper device."""
-        if "whisper" not in self._provider_configs:
-            self._provider_configs["whisper"] = get_whisper_config()
-        return self._provider_configs["whisper"].device.value
+    # ========== Circuit Breaker Settings ==========
+    circuit_breaker_enabled: bool = field(default_factory=lambda: _parse_bool(_getenv("CIRCUIT_BREAKER_ENABLED", "true")))
+    circuit_breaker_failure_threshold: int = field(default_factory=lambda: int(_getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5")))
+    circuit_breaker_recovery_timeout: float = field(default_factory=lambda: float(_getenv("CIRCUIT_BREAKER_RECOVERY_TIMEOUT", "60.0")))
 
-    @property
-    def WHISPER_COMPUTE_TYPE(self) -> str:
-        """Get Whisper compute type."""
-        if "whisper" not in self._provider_configs:
-            self._provider_configs["whisper"] = get_whisper_config()
-        return self._provider_configs["whisper"].compute_type.value
+    # ========== Batch Processing ==========
+    batch_size: int = field(default_factory=lambda: int(_getenv("BATCH_SIZE", "5")))
+    batch_timeout: int = field(default_factory=lambda: int(_getenv("BATCH_TIMEOUT", "60")))
 
-    @property
-    def PARAKEET_MODEL(self) -> str:
-        """Get Parakeet model."""
-        if "parakeet" not in self._provider_configs:
-            self._provider_configs["parakeet"] = get_parakeet_config()
-        return self._provider_configs["parakeet"].model.value
+    # ========== Caching ==========
+    cache_ttl: int = field(default_factory=lambda: int(_getenv("CACHE_TTL", "3600")))
+    cache_max_size: int = field(default_factory=lambda: int(_getenv("CACHE_MAX_SIZE", "1000")))
 
-    @property
-    def PARAKEET_DEVICE(self) -> str:
-        """Get Parakeet device."""
-        if "parakeet" not in self._provider_configs:
-            self._provider_configs["parakeet"] = get_parakeet_config()
-        return self._provider_configs["parakeet"].device
+    # ========== UI Settings ==========
+    output_format: str = field(default_factory=lambda: _getenv("OUTPUT_FORMAT", "text").lower())
+    verbose: bool = field(default_factory=lambda: _parse_bool(_getenv("VERBOSE", "false")))
+    quiet: bool = field(default_factory=lambda: _parse_bool(_getenv("QUIET", "false")))
+    debug: bool = field(default_factory=lambda: _parse_bool(_getenv("DEBUG", "false")))
+    no_color: bool = field(default_factory=lambda: _parse_bool(_getenv("NO_COLOR", "false")) or os.getenv("NO_COLOR") is not None)
+    show_progress: bool = field(default_factory=lambda: _parse_bool(_getenv("SHOW_PROGRESS", "true")))
+    rich_output: bool = field(default_factory=lambda: _parse_bool(_getenv("RICH_OUTPUT", "true")))
 
-    @property
-    def PARAKEET_BATCH_SIZE(self) -> int:
-        """Get Parakeet batch size."""
-        if "parakeet" not in self._provider_configs:
-            self._provider_configs["parakeet"] = get_parakeet_config()
-        return self._provider_configs["parakeet"].batch_size
+    # ========== Markdown Settings ==========
+    markdown_include_timestamps: bool = field(default_factory=lambda: _parse_bool(_getenv("MARKDOWN_INCLUDE_TIMESTAMPS", "true")))
+    markdown_include_speakers: bool = field(default_factory=lambda: _parse_bool(_getenv("MARKDOWN_INCLUDE_SPEAKERS", "true")))
+    markdown_include_confidence: bool = field(default_factory=lambda: _parse_bool(_getenv("MARKDOWN_INCLUDE_CONFIDENCE", "false")))
+    markdown_template: str = field(default_factory=lambda: _getenv("MARKDOWN_TEMPLATE", "default"))
 
-    @property
-    def PARAKEET_USE_FP16(self) -> bool:
-        """Get Parakeet FP16 setting."""
-        if "parakeet" not in self._provider_configs:
-            self._provider_configs["parakeet"] = get_parakeet_config()
-        return self._provider_configs["parakeet"].use_fp16
+    # ========== Deepgram Settings ==========
+    DEEPGRAM_MODEL: str = field(default_factory=lambda: _getenv("DEEPGRAM_MODEL", "nova-2"))
+    DEEPGRAM_LANGUAGE: str = field(default_factory=lambda: _getenv("DEEPGRAM_LANGUAGE", "en"))
+    DEEPGRAM_TIMEOUT: int = field(default_factory=lambda: int(_getenv("DEEPGRAM_TIMEOUT", "600")))
+    DEEPGRAM_PUNCTUATE: bool = field(default_factory=lambda: _parse_bool(_getenv("DEEPGRAM_PUNCTUATE", "true")))
+    DEEPGRAM_DIARIZE: bool = field(default_factory=lambda: _parse_bool(_getenv("DEEPGRAM_DIARIZE", "false")))
+    DEEPGRAM_SMART_FORMAT: bool = field(default_factory=lambda: _parse_bool(_getenv("DEEPGRAM_SMART_FORMAT", "true")))
 
-    # ========== Global Configuration Properties ==========
+    # ========== ElevenLabs Settings ==========
+    ELEVENLABS_MODEL: str = field(default_factory=lambda: _getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2"))
+    ELEVENLABS_TIMEOUT: int = field(default_factory=lambda: int(_getenv("ELEVENLABS_TIMEOUT", "600")))
+
+    # ========== Whisper Settings ==========
+    WHISPER_MODEL: str = field(default_factory=lambda: _getenv("WHISPER_MODEL", "base"))
+    WHISPER_DEVICE: str = field(default_factory=lambda: _getenv("WHISPER_DEVICE", "cpu"))
+    WHISPER_COMPUTE_TYPE: str = field(default_factory=lambda: _getenv("WHISPER_COMPUTE_TYPE", "int8"))
+    WHISPER_TIMEOUT: int = field(default_factory=lambda: int(_getenv("WHISPER_TIMEOUT", "600")))
+
+    # ========== Parakeet Settings ==========
+    PARAKEET_MODEL: str = field(default_factory=lambda: _getenv("PARAKEET_MODEL", "stt_en_conformer_ctc_large"))
+    PARAKEET_DEVICE: str = field(default_factory=lambda: _getenv("PARAKEET_DEVICE", "cpu"))
+    PARAKEET_BATCH_SIZE: int = field(default_factory=lambda: int(_getenv("PARAKEET_BATCH_SIZE", "1")))
+    PARAKEET_USE_FP16: bool = field(default_factory=lambda: _parse_bool(_getenv("PARAKEET_USE_FP16", "false")))
+
+    def __post_init__(self):
+        """Ensure required directories exist."""
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # ========== Backward Compatibility Properties ==========
 
     @property
     def DEFAULT_TRANSCRIPTION_PROVIDER(self) -> str:
         """Get default transcription provider."""
-        return self._global_config.default_provider
+        return self.default_provider
 
     @property
     def AVAILABLE_PROVIDERS(self) -> List[str]:
@@ -164,153 +183,95 @@ class Config:
     @property
     def DEFAULT_LANGUAGE(self) -> str:
         """Get default language."""
-        return self._global_config.default_language
+        return self.default_language
 
     @property
     def MAX_FILE_SIZE(self) -> int:
         """Get maximum file size."""
-        return self._global_config.max_file_size
+        return self.max_file_size
 
     @property
     def ALLOWED_FILE_EXTENSIONS(self) -> set:
         """Get allowed file extensions."""
-        return set(self._global_config.allowed_extensions)
-
-    # ========== Performance Configuration Properties ==========
+        return set(self.allowed_extensions)
 
     @property
     def MAX_API_RETRIES(self) -> int:
         """Get maximum API retries."""
-        return self._performance_config.max_retries
+        return self.max_retries
 
     @property
     def API_RETRY_DELAY(self) -> float:
         """Get API retry delay."""
-        return self._performance_config.retry_delay
+        return self.retry_delay
 
     @property
     def MAX_RETRY_DELAY(self) -> float:
         """Get maximum retry delay."""
-        return self._performance_config.max_retry_delay
+        return self.max_retry_delay
 
     @property
     def RETRY_EXPONENTIAL_BASE(self) -> float:
         """Get retry exponential base."""
-        return self._performance_config.retry_exponential_base
+        return self.retry_exponential_base
 
     @property
     def RETRY_JITTER_ENABLED(self) -> bool:
         """Get retry jitter setting."""
-        return self._performance_config.retry_jitter
+        return self.retry_jitter
 
     @property
     def CIRCUIT_BREAKER_FAILURE_THRESHOLD(self) -> int:
         """Get circuit breaker failure threshold."""
-        return self._performance_config.circuit_breaker_failure_threshold
+        return self.circuit_breaker_failure_threshold
 
     @property
     def CIRCUIT_BREAKER_RECOVERY_TIMEOUT(self) -> float:
         """Get circuit breaker recovery timeout."""
-        return self._performance_config.circuit_breaker_recovery_timeout
+        return self.circuit_breaker_recovery_timeout
 
     @property
     def HEALTH_CHECK_TIMEOUT(self) -> float:
         """Get health check timeout."""
-        return self._performance_config.connect_timeout
+        return float(self.connect_timeout)
 
     @property
     def HEALTH_CHECK_ENABLED(self) -> bool:
         """Get health check enabled setting."""
-        return self._global_config.enable_health_checks
-
-    # ========== Timeout Properties ==========
-
-    @property
-    def DEEPGRAM_TIMEOUT(self) -> int:
-        """Get Deepgram timeout."""
-        if "deepgram" not in self._provider_configs:
-            self._provider_configs["deepgram"] = get_deepgram_config()
-        return self._provider_configs["deepgram"].timeout
-
-    @property
-    def ELEVENLABS_TIMEOUT(self) -> int:
-        """Get ElevenLabs timeout."""
-        if "elevenlabs" not in self._provider_configs:
-            self._provider_configs["elevenlabs"] = get_elevenlabs_config()
-        return self._provider_configs["elevenlabs"].timeout
-
-    @property
-    def WHISPER_TIMEOUT(self) -> int:
-        """Get Whisper timeout."""
-        if "whisper" not in self._provider_configs:
-            self._provider_configs["whisper"] = get_whisper_config()
-        return self._provider_configs["whisper"].timeout
-
-    # ========== Logging Properties ==========
+        return self.enable_health_checks
 
     @property
     def LOG_LEVEL(self) -> str:
         """Get log level."""
-        return self._global_config.log_level
-
-    # ========== UI Configuration Properties ==========
-
-    @property
-    def markdown_include_timestamps(self) -> bool:
-        """Get markdown timestamps setting."""
-        return self._ui_config.markdown_include_timestamps
-
-    @property
-    def markdown_include_speakers(self) -> bool:
-        """Get markdown speakers setting."""
-        return self._ui_config.markdown_include_speakers
-
-    @property
-    def markdown_include_confidence(self) -> bool:
-        """Get markdown confidence setting."""
-        return self._ui_config.markdown_include_confidence
+        return self.log_level
 
     @property
     def markdown_default_template(self) -> str:
         """Get markdown template."""
-        return self._ui_config.markdown_template
+        return self.markdown_template
 
-    # ========== Backward Compatible Methods ==========
+    # ========== Class Methods for Backward Compatibility ==========
 
     @classmethod
     def validate(cls, provider: str = "deepgram") -> None:
-        """Validate configuration for specified provider.
+        """Validate configuration for specified provider."""
+        config = cls()
 
-        Args:
-            provider: Provider to validate
-
-        Raises:
-            ValueError: If configuration is invalid
-        """
-        instance = cls()
-
-        # Validate global configuration
-        instance._global_config.validate()
-
-        # Validate provider-specific configuration
         if provider == "deepgram":
-            config = get_deepgram_config()
-            if not config.api_key:
+            if not config.DEEPGRAM_API_KEY:
                 raise ValueError(
                     "DEEPGRAM_API_KEY environment variable not found or invalid. "
                     "Set it in your environment or create a .env file with: "
                     "DEEPGRAM_API_KEY=your-api-key-here"
                 )
         elif provider == "elevenlabs":
-            config = get_elevenlabs_config()
-            if not config.api_key:
+            if not config.ELEVENLABS_API_KEY:
                 raise ValueError(
                     "ELEVENLABS_API_KEY environment variable not found or invalid. "
                     "Set it in your environment or create a .env file with: "
                     "ELEVENLABS_API_KEY=your-api-key-here"
                 )
         elif provider == "whisper":
-            # Check Whisper dependencies
             try:
                 import torch
                 import whisper
@@ -320,7 +281,6 @@ class Config:
                     "pip install openai-whisper torch"
                 )
         elif provider == "parakeet":
-            # Check Parakeet/NeMo dependencies
             try:
                 import nemo
                 import torch
@@ -334,64 +294,41 @@ class Config:
 
     @classmethod
     def get_deepgram_api_key(cls) -> str:
-        """Get Deepgram API key with validation.
-
-        Returns:
-            API key
-
-        Raises:
-            ValueError: If not configured
-        """
-        instance = cls()
-        return instance._security_config.get_api_key("deepgram")
+        """Get Deepgram API key with validation."""
+        config = cls()
+        if not config.DEEPGRAM_API_KEY:
+            raise ValueError("DEEPGRAM_API_KEY not configured")
+        return config.DEEPGRAM_API_KEY
 
     @classmethod
     def get_elevenlabs_api_key(cls) -> str:
-        """Get ElevenLabs API key with validation.
-
-        Returns:
-            API key
-
-        Raises:
-            ValueError: If not configured
-        """
-        instance = cls()
-        return instance._security_config.get_api_key("elevenlabs")
+        """Get ElevenLabs API key with validation."""
+        config = cls()
+        if not config.ELEVENLABS_API_KEY:
+            raise ValueError("ELEVENLABS_API_KEY not configured")
+        return config.ELEVENLABS_API_KEY
 
     @classmethod
     def get_gemini_api_key(cls) -> str:
-        """Get Gemini API key with validation.
-
-        Returns:
-            API key
-
-        Raises:
-            ValueError: If not configured
-        """
-        instance = cls()
-        return instance._security_config.get_api_key("gemini")
+        """Get Gemini API key with validation."""
+        config = cls()
+        if not config.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY not configured")
+        return config.GEMINI_API_KEY
 
     @classmethod
     def is_configured(cls, provider: Optional[str] = None) -> bool:
-        """Check if provider is configured.
-
-        Args:
-            provider: Provider to check, or None for any
-
-        Returns:
-            True if configured
-        """
-        instance = cls()
+        """Check if provider is configured."""
+        config = cls()
 
         if provider == "deepgram":
-            return instance.DEEPGRAM_API_KEY is not None
+            return config.DEEPGRAM_API_KEY is not None
         elif provider == "elevenlabs":
-            return instance.ELEVENLABS_API_KEY is not None
+            return config.ELEVENLABS_API_KEY is not None
         elif provider == "whisper":
             try:
                 import torch
                 import whisper
-
                 return True
             except ImportError:
                 return False
@@ -399,33 +336,26 @@ class Config:
             try:
                 import nemo
                 import torch
-
                 return True
             except ImportError:
                 return False
         else:
-            # Check if any provider is configured
-            return instance.DEEPGRAM_API_KEY is not None or instance.ELEVENLABS_API_KEY is not None
+            return config.DEEPGRAM_API_KEY is not None or config.ELEVENLABS_API_KEY is not None
 
     @classmethod
     def get_available_providers(cls) -> List[str]:
-        """Get list of configured providers.
-
-        Returns:
-            List of available provider names
-        """
-        instance = cls()
+        """Get list of configured providers."""
+        config = cls()
         available = []
 
-        if instance.DEEPGRAM_API_KEY:
+        if config.DEEPGRAM_API_KEY:
             available.append("deepgram")
-        if instance.ELEVENLABS_API_KEY:
+        if config.ELEVENLABS_API_KEY:
             available.append("elevenlabs")
 
         try:
             import torch
             import whisper
-
             available.append("whisper")
         except ImportError:
             pass
@@ -433,7 +363,6 @@ class Config:
         try:
             import nemo
             import torch
-
             available.append("parakeet")
         except ImportError:
             pass
@@ -441,208 +370,23 @@ class Config:
         return available
 
     @classmethod
-    def get_provider_config(cls, provider_name: str) -> Dict[str, Any]:
-        """Get provider configuration dictionary.
-
-        Args:
-            provider_name: Provider name
-
-        Returns:
-            Configuration dictionary
-
-        Raises:
-            ValueError: If provider unknown
-        """
-        instance = cls()
-
-        base_config = {
-            "max_retries": instance.MAX_API_RETRIES,
-            "retry_delay": instance.API_RETRY_DELAY,
-            "max_retry_delay": instance.MAX_RETRY_DELAY,
-            "retry_exponential_base": instance.RETRY_EXPONENTIAL_BASE,
-            "retry_jitter_enabled": instance.RETRY_JITTER_ENABLED,
-            "circuit_breaker_failure_threshold": instance.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
-            "circuit_breaker_recovery_timeout": instance.CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
-            "health_check_timeout": instance.HEALTH_CHECK_TIMEOUT,
-            "health_check_enabled": instance.HEALTH_CHECK_ENABLED,
-        }
-
-        if provider_name == "deepgram":
-            config = get_deepgram_config()
-            return {
-                **base_config,
-                "api_key": config.api_key,
-                "timeout": config.timeout,
-                "max_file_size": config.max_file_size,
-            }
-        elif provider_name == "elevenlabs":
-            config = get_elevenlabs_config()
-            return {
-                **base_config,
-                "api_key": config.api_key,
-                "timeout": config.timeout,
-                "max_file_size": config.max_file_size,
-            }
-        elif provider_name == "whisper":
-            config = get_whisper_config()
-            return {
-                **base_config,
-                "api_key": None,
-                "timeout": config.timeout,
-                "max_file_size": config.max_file_size,
-            }
-        elif provider_name == "parakeet":
-            config = get_parakeet_config()
-            return {
-                **base_config,
-                "api_key": None,
-                "timeout": config.timeout,
-                "max_file_size": config.max_file_size,
-            }
-        else:
-            raise ValueError(f"Unknown provider: {provider_name}")
-
-    @classmethod
     def validate_file_extension(cls, file_path: Path) -> bool:
-        """Validate file extension.
-
-        Args:
-            file_path: Path to validate
-
-        Returns:
-            True if valid
-        """
-        instance = cls()
-        return instance._global_config.validate_file_path(file_path)
-
-    @classmethod
-    def get_security_settings(cls) -> Dict[str, Any]:
-        """Get security settings.
-
-        Returns:
-            Security settings dictionary
-        """
-        instance = cls()
-        return {
-            "max_file_size": instance.MAX_FILE_SIZE,
-            "allowed_extensions": instance.ALLOWED_FILE_EXTENSIONS,
-            "max_retries": instance.MAX_API_RETRIES,
-            "timeouts": {
-                "deepgram": instance.DEEPGRAM_TIMEOUT,
-                "elevenlabs": instance.ELEVENLABS_TIMEOUT,
-                "whisper": instance.WHISPER_TIMEOUT,
-            },
-        }
-
-    @classmethod
-    def _sanitize_for_logging(cls, value: str) -> str:
-        """Sanitize sensitive values for logging.
-
-        Args:
-            value: Value to sanitize
-
-        Returns:
-            Sanitized value
-        """
-        return SecurityConfig.sanitize_for_logging(value)
-
-    @classmethod
-    def _validate_deepgram_key(cls, key: str) -> bool:
-        """Validate Deepgram key format.
-
-        Args:
-            key: API key
-
-        Returns:
-            True if valid
-        """
-        instance = cls()
-        return instance._security_config.validate_api_key("deepgram", key)
-
-    @classmethod
-    def _validate_elevenlabs_key(cls, key: str) -> bool:
-        """Validate ElevenLabs key format.
-
-        Args:
-            key: API key
-
-        Returns:
-            True if valid
-        """
-        instance = cls()
-        return instance._security_config.validate_api_key("elevenlabs", key)
-
-    @classmethod
-    def _validate_gemini_key(cls, key: str) -> bool:
-        """Validate Gemini key format.
-
-        Args:
-            key: API key
-
-        Returns:
-            True if valid
-        """
-        instance = cls()
-        return instance._security_config.validate_api_key("gemini", key)
-
-    @classmethod
-    def _validate_configuration(cls) -> None:
-        """Validate overall configuration.
-
-        Raises:
-            ValueError: If invalid
-        """
-        instance = cls()
-        instance._global_config.validate()
-        instance._performance_config.validate()
+        """Validate file extension."""
+        config = cls()
+        return file_path.suffix.lower() in config.allowed_extensions
 
 
-# UI configuration helper (backward compatibility)
-DEFAULT_CONFIG: Dict[str, Any] = {
-    "ui": {
-        "progress_bars": True,
-        "rich_output": True,
-        "json_fallback": False,
-    }
-}
-
-def get_ui_config_dict() -> Dict[str, Any]:
-    """Get UI configuration as a simple dictionary.
-
-    This preserves backward compatibility for legacy callers that expected
-    a dict while avoiding name collisions with the UI singleton accessor.
-    """
-    ui = get_ui_config()  # imported from .ui at module top
-    return {
-        "verbose": ui.verbose,
-        "json_output": ui.output_format.value == "json",
-        "no_color": ui.no_color,
-    }
+# Singleton instance
+_config_instance: Optional[Config] = None
 
 
-# Export main Config class and helpers for backward compatibility
-__all__ = [
-    "DEFAULT_CONFIG",
-    "Config",
-    "ConfigPriority",
-    "ConfigValidator",
-    "DeepgramConfig",
-    "ElevenLabsConfig",
-    # Export modular components for advanced usage
-    "GlobalConfig",
-    "ParakeetConfig",
-    "PerformanceConfig",
-    "SecurityConfig",
-    "UIConfig",
-    "ValidationLevel",
-    "WhisperConfig",
-    "create_config_validator",
-    "get_deepgram_config",
-    "get_elevenlabs_config",
-    "get_global_config",
-    "get_parakeet_config",
-    "get_performance_config",
-    "get_security_config",
-    "get_ui_config",
-    "get_whisper_config",
-]
+def get_config() -> Config:
+    """Get global config instance (singleton pattern)."""
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance
+
+
+# For backward compatibility with __init__.py exports
+__all__ = ["Config", "get_config"]
