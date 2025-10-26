@@ -36,63 +36,63 @@ def temporarily_remove_modules(*module_names):
 class TestConfigValidate:
     """Test suite for Config.validate() class method."""
 
-    def test_validate_deepgram_success(self):
-        """Test successful validation with valid Deepgram API key."""
-        with patch.dict(os.environ, {"DEEPGRAM_API_KEY": VALID_DEEPGRAM_KEY}):
+    @pytest.mark.parametrize(
+        "provider,env_key,test_value",
+        [
+            ("deepgram", "DEEPGRAM_API_KEY", VALID_DEEPGRAM_KEY),
+            ("elevenlabs", "ELEVENLABS_API_KEY", VALID_ELEVENLABS_KEY),
+        ],
+    )
+    def test_validate_api_key_success(self, provider, env_key, test_value):
+        """Test successful validation with valid API keys."""
+        with patch.dict(os.environ, {env_key: test_value}):
             # Should not raise any exception
-            Config.validate("deepgram")
+            Config.validate(provider)
 
-    def test_validate_deepgram_missing_key(self):
-        """Test validation fails when Deepgram API key is missing."""
+    @pytest.mark.parametrize(
+        "provider,env_key",
+        [
+            ("deepgram", "DEEPGRAM_API_KEY"),
+            ("elevenlabs", "ELEVENLABS_API_KEY"),
+        ],
+    )
+    def test_validate_api_key_missing(self, provider, env_key):
+        """Test validation fails when API key is missing."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
-                Config.validate("deepgram")
+                Config.validate(provider)
 
-            assert "DEEPGRAM_API_KEY" in str(exc_info.value)
+            assert env_key in str(exc_info.value)
             assert "environment variable not found" in str(exc_info.value)
             assert ".env file" in str(exc_info.value)
 
-    def test_validate_deepgram_empty_key(self):
-        """Test validation fails when Deepgram API key is empty."""
-        with patch.dict(os.environ, {"DEEPGRAM_API_KEY": ""}):
+    @pytest.mark.parametrize(
+        "provider,env_key",
+        [
+            ("deepgram", "DEEPGRAM_API_KEY"),
+            ("elevenlabs", "ELEVENLABS_API_KEY"),
+        ],
+    )
+    def test_validate_api_key_empty(self, provider, env_key):
+        """Test validation fails when API key is empty."""
+        with patch.dict(os.environ, {env_key: ""}):
             with pytest.raises(ValueError) as exc_info:
-                Config.validate("deepgram")
+                Config.validate(provider)
 
-            assert "DEEPGRAM_API_KEY" in str(exc_info.value)
+            assert env_key in str(exc_info.value)
 
-    def test_validate_elevenlabs_success(self):
-        """Test successful validation with valid ElevenLabs API key."""
-        with patch.dict(os.environ, {"ELEVENLABS_API_KEY": "valid_elevenlabs_key_456"}):
+    @pytest.mark.parametrize(
+        "provider,modules",
+        [
+            ("whisper", {"torch": MagicMock(), "whisper": MagicMock()}),
+            ("parakeet", {"nemo": MagicMock(), "torch": MagicMock()}),
+        ],
+    )
+    def test_validate_module_dependencies_success(self, provider, modules):
+        """Test successful validation when required dependencies are available."""
+        with patch.dict("sys.modules", modules):
             # Should not raise any exception
-            Config.validate("elevenlabs")
-
-    def test_validate_elevenlabs_missing_key(self):
-        """Test validation fails when ElevenLabs API key is missing."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError) as exc_info:
-                Config.validate("elevenlabs")
-
-            assert "ELEVENLABS_API_KEY" in str(exc_info.value)
-            assert "environment variable not found" in str(exc_info.value)
-            assert ".env file" in str(exc_info.value)
-
-    def test_validate_elevenlabs_empty_key(self):
-        """Test validation fails when ElevenLabs API key is empty."""
-        with patch.dict(os.environ, {"ELEVENLABS_API_KEY": ""}):
-            with pytest.raises(ValueError) as exc_info:
-                Config.validate("elevenlabs")
-
-            assert "ELEVENLABS_API_KEY" in str(exc_info.value)
-
-    def test_validate_whisper_success(self):
-        """Test successful validation when Whisper dependencies are available."""
-        # Mock successful imports
-        mock_torch = MagicMock()
-        mock_whisper = MagicMock()
-
-        with patch.dict("sys.modules", {"torch": mock_torch, "whisper": mock_whisper}):
-            # Should not raise any exception
-            Config.validate("whisper")
+            Config.validate(provider)
 
     def test_validate_whisper_missing_torch(self):
         """Test validation fails when torch dependency is missing."""
@@ -116,39 +116,11 @@ class TestConfigValidate:
 
     def test_validate_whisper_import_error(self):
         """Test validation fails when import raises ImportError."""
-        # Simulate ImportError by removing from sys.modules
-        import sys
-
-        # Save original modules if they exist
-        torch_backup = sys.modules.get("torch")
-        whisper_backup = sys.modules.get("whisper")
-
-        try:
-            # Remove modules to force ImportError
-            if "torch" in sys.modules:
-                del sys.modules["torch"]
-            if "whisper" in sys.modules:
-                del sys.modules["whisper"]
-
+        with temporarily_remove_modules("torch", "whisper"):
             with pytest.raises(ValueError) as exc_info:
                 Config.validate("whisper")
 
             assert "Whisper dependencies not installed" in str(exc_info.value)
-        finally:
-            # Restore original modules
-            if torch_backup:
-                sys.modules["torch"] = torch_backup
-            if whisper_backup:
-                sys.modules["whisper"] = whisper_backup
-
-    def test_validate_parakeet_success(self):
-        """Test successful validation when Parakeet dependencies are available."""
-        mock_nemo = MagicMock()
-        mock_torch = MagicMock()
-
-        with patch.dict("sys.modules", {"nemo": mock_nemo, "torch": mock_torch}):
-            # Should not raise any exception
-            Config.validate("parakeet")
 
     def test_validate_parakeet_missing_nemo(self):
         """Test validation fails when nemo dependency is missing."""
@@ -172,29 +144,11 @@ class TestConfigValidate:
 
     def test_validate_parakeet_import_error(self):
         """Test validation fails when Parakeet import raises ImportError."""
-        import sys
-
-        # Save original modules if they exist
-        nemo_backup = sys.modules.get("nemo")
-        torch_backup = sys.modules.get("torch")
-
-        try:
-            # Remove modules to force ImportError
-            if "nemo" in sys.modules:
-                del sys.modules["nemo"]
-            if "torch" in sys.modules:
-                del sys.modules["torch"]
-
+        with temporarily_remove_modules("nemo", "torch"):
             with pytest.raises(ValueError) as exc_info:
                 Config.validate("parakeet")
 
             assert "Parakeet dependencies not installed" in str(exc_info.value)
-        finally:
-            # Restore original modules
-            if nemo_backup:
-                sys.modules["nemo"] = nemo_backup
-            if torch_backup:
-                sys.modules["torch"] = torch_backup
 
     def test_validate_unknown_provider(self):
         """Test validation fails with unknown provider."""
