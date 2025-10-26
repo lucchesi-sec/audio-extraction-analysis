@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Refactor large functions in transcribe_command.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/commands/transcribe_command.py**\nIssue Type: long_function\nSeverity: medium\nLine: 19\n\n**Description:** Function 'transcribe_command' is 68 lines long\n**Suggested Action:** Consider breaking down transcribe_command into smaller functions",
+  "title": "Refactor large functions in state_manager.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/orchestration/state_manager.py**\nIssue Type: long_function\nSeverity: medium\nLine: 439\n\n**Description:** Function '_deserialize_state' is 51 lines long\n**Suggested Action:** Consider breaking down _deserialize_state into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "2ac4fd4a-ed5c-4e37-b774-92d2d6f54579",
+    "work_item_id": "cb226b05-b1c1-4fe6-b534-71a144a10527",
     "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
@@ -17,15 +17,15 @@
       "quality_issue": {
         "type": "long_function",
         "severity": "medium",
-        "line": 19,
-        "description": "Function 'transcribe_command' is 68 lines long",
-        "suggestion": "Consider breaking down transcribe_command into smaller functions"
+        "line": 439,
+        "description": "Function '_deserialize_state' is 51 lines long",
+        "suggestion": "Consider breaking down _deserialize_state into smaller functions"
       },
-      "discovered_at": "2025-10-26T16:49:45.679526",
+      "discovered_at": "2025-10-26T16:49:45.685126",
       "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T18:12:17.929909",
+  "timestamp": "2025-10-26T18:15:06.421409",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
