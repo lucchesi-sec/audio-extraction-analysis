@@ -1,11 +1,11 @@
 {
-  "last_execution_time": "2025-10-26T16:49:46.173306",
+  "last_execution_time": "2025-10-26T16:49:48.242591",
   "last_task_type": "test",
-  "last_task_title": "Add tests for complex function in cli.py",
-  "last_task_description": "**Complex Function Needs Testing**\n\nFile: /home/enzo/audio-extraction-analysis/src/cli.py\nFunction: main\nComplexity: 7\nLines: 34\n\nThis complex function should have comprehensive test coverage to ensure reliability.",
-  "last_source_file": "/home/enzo/audio-extraction-analysis/src/cli.py",
+  "last_task_title": "Add tests for complex function in full_analyzer.py",
+  "last_task_description": "**Complex Function Needs Testing**\n\nFile: /home/enzo/audio-extraction-analysis/src/analysis/full_analyzer.py\nFunction: analyze_and_save\nComplexity: 1\nLines: 36\n\nThis complex function should have comprehensive test coverage to ensure reliability.",
+  "last_source_file": "/home/enzo/audio-extraction-analysis/src/analysis/full_analyzer.py",
   "session_started": true,
   "simulated": true,
   "context_strategy": "project",
-  "execution_count": 1
+  "execution_count": 2
 }
