@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from ..config.config import Config
+from ..config import get_config
 from ..utils.retry import RetryConfig
 from .base import CircuitBreakerConfig
 
@@ -24,22 +24,23 @@ class ProviderInitializer:
         provider_name: str = "provider"
     ) -> RetryConfig:
         """Get retry configuration with defaults.
-        
+
         Args:
             retry_config: Optional custom retry configuration
             provider_name: Name of the provider for logging
-            
+
         Returns:
             RetryConfig instance with either custom or default values
         """
         if retry_config is None:
             logger.debug(f"Using default retry config for {provider_name}")
+            config = get_config()
             retry_config = RetryConfig(
-                max_attempts=Config.MAX_API_RETRIES,
-                base_delay=Config.API_RETRY_DELAY,
-                max_delay=Config.MAX_RETRY_DELAY,
-                exponential_base=Config.RETRY_EXPONENTIAL_BASE,
-                jitter=Config.RETRY_JITTER_ENABLED,
+                max_attempts=config.MAX_API_RETRIES,
+                base_delay=config.API_RETRY_DELAY,
+                max_delay=config.MAX_RETRY_DELAY,
+                exponential_base=config.RETRY_EXPONENTIAL_BASE,
+                jitter=config.RETRY_JITTER_ENABLED,
             )
         return retry_config
     
@@ -49,19 +50,20 @@ class ProviderInitializer:
         provider_name: str = "provider"
     ) -> CircuitBreakerConfig:
         """Get circuit breaker configuration with defaults.
-        
+
         Args:
             circuit_config: Optional custom circuit breaker configuration
             provider_name: Name of the provider for logging
-            
+
         Returns:
             CircuitBreakerConfig instance with either custom or default values
         """
         if circuit_config is None:
             logger.debug(f"Using default circuit breaker config for {provider_name}")
+            config = get_config()
             circuit_config = CircuitBreakerConfig(
-                failure_threshold=Config.CIRCUIT_BREAKER_THRESHOLD,
-                recovery_timeout=Config.CIRCUIT_BREAKER_TIMEOUT,
+                failure_threshold=config.CIRCUIT_BREAKER_FAILURE_THRESHOLD,
+                recovery_timeout=config.CIRCUIT_BREAKER_RECOVERY_TIMEOUT,
                 expected_exception_types=(
                     ConnectionError,
                     TimeoutError,

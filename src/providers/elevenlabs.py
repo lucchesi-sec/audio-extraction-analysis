@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from ..config.config import Config
+from ..config import get_config
 from ..models.transcription import TranscriptionResult, TranscriptionUtterance
 from ..utils.retry import RetryConfig
 from .base import BaseTranscriptionProvider, CircuitBreakerConfig
@@ -53,7 +53,7 @@ class ElevenLabsTranscriber(BaseTranscriptionProvider):
         """Initialize the ElevenLabs transcriber with API key and configurations.
 
         Args:
-            api_key: Optional ElevenLabs API key. If None, uses Config.ELEVENLABS_API_KEY
+            api_key: Optional ElevenLabs API key. If None, uses get_config().ELEVENLABS_API_KEY
             circuit_config: Circuit breaker configuration
             retry_config: Retry configuration
         """
@@ -65,7 +65,8 @@ class ElevenLabsTranscriber(BaseTranscriptionProvider):
         )
 
         super().__init__(api_key, circuit_config, retry_config)
-        self.api_key = api_key or Config.ELEVENLABS_API_KEY
+        config = get_config()
+        self.api_key = api_key or config.ELEVENLABS_API_KEY
         if not PROVIDER_AVAILABLE:
             raise ImportError("ElevenLabs SDK not available. Install with: pip install elevenlabs")
 
@@ -120,9 +121,10 @@ class ElevenLabsTranscriber(BaseTranscriptionProvider):
 
             # Make a simple API call to check connectivity
             # Use the user endpoint which is lightweight
+            config = get_config()
             response = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(None, lambda: client.user.get_user_info()),
-                timeout=Config.HEALTH_CHECK_TIMEOUT,
+                timeout=config.HEALTH_CHECK_TIMEOUT,
             )
 
             response_time = (time.time() - start_time) * 1000
@@ -211,6 +213,7 @@ class ElevenLabsTranscriber(BaseTranscriptionProvider):
 
             # Perform transcription
             logger.info("Sending to ElevenLabs...")
+            config = get_config()
             response = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
@@ -221,7 +224,7 @@ class ElevenLabsTranscriber(BaseTranscriptionProvider):
                         # Add more parameters as they become available
                     ),
                 ),
-                timeout=Config.ELEVENLABS_TIMEOUT,
+                timeout=config.ELEVENLABS_TIMEOUT,
             )
 
             logger.info("Transcription completed successfully")
