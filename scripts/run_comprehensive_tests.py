@@ -1,5 +1,40 @@
 #!/usr/bin/env python3
-"""Automated comprehensive test runner for audio-extraction-analysis pipeline."""
+"""Automated comprehensive test runner for audio-extraction-analysis pipeline.
+
+This script provides end-to-end testing for the audio extraction and analysis pipeline,
+covering multiple test categories:
+- Core functionality (extraction, transcription, processing)
+- Provider integration (Deepgram, fallback mechanisms)
+- Security (path traversal, command injection prevention)
+- Error handling (missing files, invalid arguments, permission errors)
+- CLI arguments (help, version, quality presets, output formats)
+- Performance (caching behavior, timing characteristics)
+- Output formats (JSON, Markdown export with various templates)
+
+The test runner uses REAL media files from data/input directory rather than synthetic
+test data to ensure authentic validation. All tests run in isolated temporary directories
+to prevent pollution of the project workspace.
+
+Environment Requirements:
+- DEEPGRAM_API_KEY must be set in .env for provider tests
+- FFmpeg must be installed for audio extraction
+- Real audio/video files must exist in data/input/
+
+Usage:
+    python scripts/run_comprehensive_tests.py [options]
+
+    Options:
+        --test-data-dir PATH  Directory with test files (default: ./test_data)
+        --json-report PATH    JSON report output path (default: test_report.json)
+        --markdown-report PATH Markdown report path (default: test_report.md)
+        --verbose            Enable verbose logging
+        --debug              Enable pipeline debug dumps
+
+Exit Codes:
+    0 - All tests passed
+    1 - One or more tests failed
+    130 - Interrupted by user (Ctrl+C)
+"""
 
 import json
 import logging
@@ -34,13 +69,46 @@ except Exception as e:
 
 
 class PipelineTestRunner:
-    """Comprehensive test runner for the audio extraction and analysis pipeline."""
-    
+    """Comprehensive test runner for the audio extraction and analysis pipeline.
+
+    This class orchestrates execution of all test suites, manages temporary test environments,
+    collects results, and generates detailed reports. Tests are executed sequentially with
+    proper setup/teardown to ensure isolation and reproducibility.
+
+    Test Execution Flow:
+        1. Initialize temporary workspace and locate real test media files
+        2. Run core functionality tests (extraction, transcription, processing)
+        3. Run provider integration tests (Deepgram, fallback behavior)
+        4. Run security tests (injection/traversal prevention)
+        5. Run error handling tests (missing files, invalid inputs)
+        6. Run CLI argument tests (help, version, presets)
+        7. Run performance tests (caching, timing)
+        8. Run output format tests (JSON, Markdown exports)
+        9. Generate comprehensive reports (JSON and Markdown)
+        10. Cleanup temporary files and directories
+
+    Attributes:
+        results (List[Dict]): Accumulated test results from all suites
+        start_time (float): Unix timestamp when test execution began
+        extracted_audio (Optional[Path]): Path to audio extracted from video (used in later tests)
+        test_data_dir (Path): Directory containing real media files for testing
+        temp_dir (Path): Isolated temporary directory for test outputs
+    """
+
     def __init__(self, test_data_dir: Optional[Path] = None):
-        """Initialize test runner.
-        
+        """Initialize test runner with temporary workspace and test data discovery.
+
+        Creates an isolated temporary directory for test outputs and identifies real media
+        files in data/input. The test_data_dir parameter is currently ignored; the runner
+        always uses data/input from the project root to ensure testing with real media.
+
         Args:
-            test_data_dir: Directory containing test files
+            test_data_dir: [DEPRECATED] Ignored. Runner always uses data/input directory.
+
+        Side Effects:
+            - Creates temporary directory with prefix 'pipeline_test_'
+            - Logs initialization details to INFO level
+            - Sets up results collection list
         """
         self.results = []
         self.start_time = time.time()
@@ -54,7 +122,26 @@ class PipelineTestRunner:
         logger.info(f"Test data directory: {self.test_data_dir}")
         
     def setup_test_files(self) -> tuple[Optional[Path], Optional[Path]]:
-        """Select real media files from data/input without creating any files."""
+        """Select real media files from data/input directory for testing.
+
+        Discovers existing audio and video files in the data/input directory without creating
+        any synthetic test data. This ensures tests run against real-world media formats and
+        edge cases. The method prefers the first file found for each media type.
+
+        Supported Formats:
+            Audio: .mp3, .wav, .m4a, .flac, .ogg, .aac
+            Video: .mp4, .webm, .mkv, .mov, .avi
+
+        Returns:
+            tuple[Optional[Path], Optional[Path]]: (video_path, audio_path)
+                video_path: Absolute path to first video file found, or None
+                audio_path: Absolute path to first audio file found, or None
+
+        Logs:
+            - ERROR if data/input directory doesn't exist
+            - ERROR if no media files found (prompts user to add real files)
+            - INFO with discovered file paths when successful
+        """
         if not self.test_data_dir.exists():
             logger.error(f"Real data directory not found: {self.test_data_dir}")
             return None, None
@@ -69,21 +156,46 @@ class PipelineTestRunner:
             logger.info(f"Using real data: audio={audio}, video={video}")
         return video, audio
         
-    def run_test(self, name: str, command: str, 
+    def run_test(self, name: str, command: str,
                  expected_exit_code: int = 0,
                  timeout: int = 60,
                  env_vars: Optional[Dict] = None) -> Dict:
-        """Execute a single test case.
-        
+        """Execute a single test case with comprehensive result tracking.
+
+        Runs the specified command in a subprocess with the given environment and timeout,
+        capturing stdout/stderr and recording execution metrics. Tests are executed from the
+        test_data_dir working directory to ensure relative paths work correctly.
+
         Args:
-            name: Test name
-            command: Command to execute
-            expected_exit_code: Expected exit code (0 for success)
-            timeout: Command timeout in seconds
-            env_vars: Additional environment variables
-            
+            name: Human-readable test name for reporting and logging
+            command: Shell command to execute (executed with shell=True)
+            expected_exit_code: Expected exit code (0 for success, 1+ for expected failures)
+            timeout: Maximum execution time in seconds (default: 60)
+            env_vars: Additional environment variables to merge with current environment
+
         Returns:
-            Test result dictionary
+            Dict: Test result with the following structure:
+                On Success:
+                    - name (str): Test name
+                    - command (str): Executed command
+                    - success (bool): True if exit code matched expected
+                    - exit_code (int): Actual exit code
+                    - expected_exit_code (int): Expected exit code
+                    - stdout (str): Last 4000 chars of stdout (truncated for diagnostics)
+                    - stderr (str): Last 4000 chars of stderr (truncated for diagnostics)
+                    - duration (float): Execution time in seconds
+                    - timestamp (str): ISO format timestamp
+
+                On Timeout:
+                    - name, command, success (False), error, duration, timestamp
+
+                On Exception:
+                    - name, command, success (False), error, duration, timestamp
+
+        Side Effects:
+            - Logs test start, success/failure to INFO/ERROR level
+            - Executes command from test_data_dir as working directory
+            - Inherits and potentially modifies environment variables
         """
         logger.info(f"Running test: {name}")
         
@@ -149,7 +261,32 @@ class PipelineTestRunner:
             }
     
     def run_core_functionality_tests(self):
-        """Test core pipeline functionality."""
+        """Test core pipeline functionality with real media files.
+
+        Validates the primary features of the audio extraction and analysis pipeline:
+        1. Audio extraction from video files (FFmpeg integration)
+        2. Complete processing pipeline (extract + transcribe + analyze)
+        3. Analysis style variations (concise vs. full)
+
+        The extracted audio from video tests is cached in self.extracted_audio for reuse
+        in subsequent test suites to avoid redundant extraction operations.
+
+        Tests Execute:
+            - Audio extraction from video → MP3 output
+            - Full pipeline with Deepgram provider (requires DEEPGRAM_API_KEY)
+            - Concise analysis style processing
+            - Full analysis style processing
+
+        Dependencies:
+            - FFmpeg for audio extraction
+            - DEEPGRAM_API_KEY in environment for transcription
+            - Real video file in data/input directory
+
+        Side Effects:
+            - Populates self.extracted_audio with extracted audio path
+            - Appends test results to self.results
+            - May attach pipeline_debug.json content to failed test results
+        """
         logger.info("\n=== CORE FUNCTIONALITY TESTS ===")
         
         test_video, test_audio = self.setup_test_files()
@@ -198,7 +335,27 @@ class PipelineTestRunner:
             )
     
     def run_provider_tests(self):
-        """Test different transcription providers."""
+        """Test transcription provider integration and fallback mechanisms.
+
+        Validates that the pipeline correctly integrates with third-party transcription
+        providers and handles missing API credentials gracefully. Tests provider-specific
+        behavior and the auto-fallback mechanism when API keys are unavailable.
+
+        Tests Execute:
+            - Deepgram provider with valid API key (expects success)
+            - Auto provider fallback with no API keys (expects failure with exit code 1)
+
+        The fallback test intentionally removes API keys from the environment to verify
+        that the pipeline fails gracefully rather than hanging or crashing.
+
+        Dependencies:
+            - DEEPGRAM_API_KEY in environment for Deepgram test
+            - Audio file from setup_test_files() or self.extracted_audio
+
+        Side Effects:
+            - Appends test results to self.results
+            - Temporarily modifies environment variables for fallback test
+        """
         logger.info("\n=== PROVIDER TESTS ===")
 
         # Prefer real audio; fall back to extracted audio from video
@@ -227,7 +384,30 @@ class PipelineTestRunner:
         self.results.append(result)
     
     def run_security_tests(self):
-        """Test security measures."""
+        """Test security hardening against common attack vectors.
+
+        Validates that the pipeline properly sanitizes and validates file paths and arguments
+        to prevent security vulnerabilities. All tests expect failure (exit code 1) to confirm
+        malicious inputs are rejected.
+
+        Threat Model Coverage:
+            - Path Traversal: Attempts to access files outside allowed directories
+              using relative paths (../) and absolute paths to sensitive locations
+            - Command Injection: Attempts to inject shell commands through semicolons,
+              backticks, and other shell metacharacters in file arguments
+
+        Tests Execute:
+            - Path traversal with ../ sequences
+            - Path traversal with absolute paths to /etc/passwd
+            - Command injection via semicolon command separator
+            - Command injection via backtick command substitution
+
+        All tests MUST fail (exit code 1) to pass the security validation.
+
+        Side Effects:
+            - Appends test results to self.results
+            - Each test expects and validates failure conditions
+        """
         logger.info("\n=== SECURITY TESTS ===")
         
         security_tests = [
@@ -263,7 +443,30 @@ class PipelineTestRunner:
             self.results.append(result)
     
     def run_error_handling_tests(self):
-        """Test error handling and recovery."""
+        """Test error handling and recovery across various failure scenarios.
+
+        Validates that the pipeline gracefully handles invalid inputs, missing files,
+        and permission errors with appropriate error messages and exit codes. Tests
+        ensure the application fails safely without crashes or undefined behavior.
+
+        Error Scenarios Tested:
+            - File System Errors:
+                * Nonexistent input files (exit code 1)
+                * Empty input files (exit code 1)
+                * Read-only output directories (exit code 1)
+
+            - Argument Validation Errors:
+                * Invalid provider names (argparse error, exit code 2)
+                * Invalid quality presets (argparse error, exit code 2)
+
+        Creates a temporary empty file (empty.mp4) in temp_dir for testing, ensuring
+        the real data/input directory remains unmodified.
+
+        Side Effects:
+            - Creates empty.mp4 in temp_dir for empty file testing
+            - Appends test results to self.results
+            - All tests expect and validate specific failure exit codes
+        """
         logger.info("\n=== ERROR HANDLING TESTS ===")
         
         error_tests = [
@@ -308,9 +511,32 @@ class PipelineTestRunner:
             self.results.append(result)
     
     def run_cli_argument_tests(self):
-        """Test various CLI argument combinations."""
+        """Test CLI argument parsing, help messages, and version information.
+
+        Validates that the CLI interface provides proper help documentation and version
+        information. Currently limited to non-executing tests (help, version) to avoid
+        requiring synthetic test files.
+
+        The method contains commented-out tests for complex argument combinations and
+        quality presets that would require real media files. These are disabled with
+        an early return to prevent test failures when media files are unavailable.
+
+        Tests Execute:
+            - Main help message (--help)
+            - Subcommand help messages (extract, transcribe, process)
+            - Version information (--version)
+
+        Commented Tests (Disabled):
+            - Complex argument combinations (all features together)
+            - Quality presets (compressed, speech, standard, high)
+            These tests are preserved for future use when test file handling is improved.
+
+        Side Effects:
+            - Appends test results to self.results
+            - Returns early to skip media-dependent tests
+        """
         logger.info("\n=== CLI ARGUMENT TESTS ===")
-        # Only run argument help/version tests to avoid synthetic inputs
+        # Only run help/version tests to avoid dependency on synthetic test files
         basic_cli = [
             ("Main help", "audio-extraction-analysis --help", 0),
             ("Extract subcommand help", "audio-extraction-analysis extract --help", 0),
@@ -390,7 +616,30 @@ class PipelineTestRunner:
             self.results.append(result)
     
     def run_performance_tests(self):
-        """Test performance characteristics."""
+        """Test performance characteristics and caching behavior.
+
+        Validates that the pipeline's caching mechanism improves performance on repeated
+        operations. Measures execution time for identical transcription requests to
+        determine cache effectiveness.
+
+        Test Strategy:
+            1. Run transcription with no cache (cold start)
+            2. Run identical transcription (warm cache)
+            3. Compare execution times to calculate cache speedup
+
+        Expected Behavior:
+            If caching is implemented, the second run should be significantly faster.
+            The speedup ratio is logged for performance analysis.
+
+        Dependencies:
+            - Audio file from setup_test_files() or self.extracted_audio
+            - DEEPGRAM_API_KEY for transcription provider
+
+        Side Effects:
+            - Appends test results to self.results
+            - Logs cache speedup metrics when both tests succeed
+            - Skips tests if no audio file is available
+        """
         logger.info("\n=== PERFORMANCE TESTS ===")
         
         # Prefer real audio; fall back to extracted audio
@@ -432,7 +681,30 @@ class PipelineTestRunner:
             logger.info(f"Cache speedup: {cache_speedup:.2f}x (first: {first_time:.2f}s, second: {second_time:.2f}s)")
     
     def run_output_format_tests(self):
-        """Test different output formats."""
+        """Test various output formats and export options.
+
+        Validates that the pipeline can generate outputs in multiple formats with
+        different configuration options. Tests both inline format flags and dedicated
+        export commands.
+
+        Output Formats Tested:
+            - JSON output mode (--json-output flag for structured data)
+            - Markdown export with default template
+            - Markdown export with detailed template
+            - Markdown export without timestamps
+
+        The markdown export tests verify template customization and optional features
+        like timestamp inclusion/exclusion.
+
+        Dependencies:
+            - Audio file from setup_test_files() or self.extracted_audio
+            - DEEPGRAM_API_KEY for transcription provider
+
+        Side Effects:
+            - Creates markdown output directories in temp_dir
+            - Appends test results to self.results
+            - Skips tests if no audio file is available
+        """
         logger.info("\n=== OUTPUT FORMAT TESTS ===")
         
         # Prefer real audio; fall back to extracted audio
@@ -473,7 +745,33 @@ class PipelineTestRunner:
             self.results.append(result)
     
     def run_all_tests(self):
-        """Execute all test suites."""
+        """Execute all test suites in sequence with proper setup and teardown.
+
+        Orchestrates the complete test execution workflow, running all test suites
+        in a defined order that ensures dependencies are satisfied (e.g., core tests
+        run first to extract audio for later tests).
+
+        Execution Order:
+            1. Core functionality tests (extraction, transcription, processing)
+            2. Provider integration tests (Deepgram, fallbacks)
+            3. Security tests (injection/traversal prevention)
+            4. Error handling tests (invalid inputs, missing files)
+            5. CLI argument tests (help, version, presets)
+            6. Performance tests (caching, timing)
+            7. Output format tests (JSON, Markdown)
+
+        The execution order ensures:
+            - Audio extraction happens first (creates self.extracted_audio)
+            - Provider tests can use extracted audio as fallback
+            - Performance tests measure real-world usage patterns
+            - Cleanup happens even if tests fail (via finally block)
+
+        Side Effects:
+            - Populates self.results with all test outcomes
+            - Creates temporary files and directories
+            - Logs progress to INFO level
+            - Calls cleanup() in finally block to ensure temp directory removal
+        """
         logger.info("Starting comprehensive test suite...")
         logger.info(f"Test data directory: {self.test_data_dir}")
         logger.info(f"Temporary directory: {self.temp_dir}")
