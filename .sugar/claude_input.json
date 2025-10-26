@@ -1,26 +1,31 @@
 {
-  "task_type": "test",
-  "title": "Review test coverage for __init__.py",
-  "description": "Analyze ./src/ui/__init__.py and ensure adequate test coverage. Add missing tests for critical functionality.",
+  "task_type": "refactor",
+  "title": "Refactor large functions in audio_pipeline.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/pipeline/audio_pipeline.py**\nIssue Type: long_function\nSeverity: medium\nLine: 58\n\n**Description:** Function 'process_video' is 108 lines long\n**Suggested Action:** Consider breaking down process_video into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "babf975b-5ccd-4337-86bf-de4b6368ca85",
-    "source_type": "maintenance_generator",
+    "work_item_id": "dee1e122-4dcf-44ac-86fa-6556e6ac34e3",
+    "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "maintenance_task": true,
-      "task_type": "test",
-      "discovered_at": "2025-10-26T17:02:38.657942",
-      "source_type": "maintenance"
+      "quality_issue": {
+        "type": "long_function",
+        "severity": "medium",
+        "line": 58,
+        "description": "Function 'process_video' is 108 lines long",
+        "suggestion": "Consider breaking down process_video into smaller functions"
+      },
+      "discovered_at": "2025-10-26T17:12:22.535921",
+      "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T18:22:22.026460",
+  "timestamp": "2025-10-26T18:22:54.972752",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

@@ -72,85 +72,32 @@ class AudioProcessingPipeline:
             quality: Audio extraction quality preset
             language: Language code for transcription
             provider: Transcription provider to use ('deepgram', 'elevenlabs', 'auto')
+            analysis_style: Analysis style ('concise' or 'full')
 
         Returns:
             TranscriptionResult if successful, None otherwise
         """
         try:
             logger.info(f"Starting pipeline processing: {video_file}")
-
-            # Ensure output directory exists
             output_dir.mkdir(parents=True, exist_ok=True)
 
             # Step 1: Extract audio
-            logger.info("Step 1: Extracting audio from video")
-            audio_filename = f"{video_file.stem}.mp3"
-            audio_path = self.temp_dir / audio_filename
-
-            extractor = AudioExtractor()
-            extracted_audio = extractor.extract_audio(video_file, audio_path, quality)
-
-            if not extracted_audio:
-                logger.error("Audio extraction failed")
+            audio_path = self._extract_audio_from_video(video_file, quality)
+            if not audio_path:
                 return None
-
-            logger.info(f"Audio extracted to: {extracted_audio}")
 
             # Step 2: Transcribe audio
-            logger.info("Step 2: Transcribing audio")
-
-            # Create transcription service
-            transcription_service = TranscriptionService()
-
-            # Perform transcription using service
-            transcription_result = transcription_service.transcribe(
-                extracted_audio,
-                provider_name=provider if provider != "auto" else None,
-                language=language,
-            )
-
+            transcription_result = self._transcribe_audio_file(audio_path, provider, language)
             if not transcription_result:
-                logger.error("Transcription failed")
                 return None
 
-            logger.info("Transcription completed successfully")
-
             # Step 3: Generate analysis
-            logger.info("Step 3: Generating analysis")
-
-            if analysis_style == "concise":
-                analyzer = ConciseAnalyzer()
-                analysis_path = analyzer.analyze_and_save(
-                    transcription_result, output_dir, video_file.stem
-                )
-                logger.info(f"Concise analysis saved to: {analysis_path}")
-            elif analysis_style == "full":
-                full_analyzer = FullAnalyzer()
-                files = full_analyzer.analyze_and_save(
-                    transcription_result,
-                    output_dir,
-                    video_file.stem,
-                )
-                logger.info("Full analysis saved: " + ", ".join([p.name for p in files.values()]))
+            self._generate_analysis(transcription_result, output_dir, video_file.stem, analysis_style)
 
             # Step 4: Save results
-            logger.info("Step 4: Saving additional results")
-
-            # Save main transcript file
-            transcript_path = output_dir / f"{video_file.stem}_transcript.txt"
-            transcription_service.save_transcription_result(
-                transcription_result,
-                transcript_path,
-                provider_name=transcription_result.provider_name,
+            self._save_pipeline_results(
+                transcription_result, output_dir, video_file.stem, audio_path
             )
-
-            # Copy audio file to output if requested
-            final_audio_path = output_dir / audio_filename
-            if not final_audio_path.exists():
-                import shutil
-
-                shutil.copy2(extracted_audio, final_audio_path)
-                logger.info(f"Audio saved to: {final_audio_path}")
 
             logger.info("Pipeline processing completed successfully")
             logger.info(f"Results saved to: {output_dir}")
@@ -162,8 +109,122 @@ class AudioProcessingPipeline:
             return None
 
         finally:
-            # Clean up temporary files
             self._cleanup_temp_files()
+
+    def _extract_audio_from_video(
+        self, video_file: Path, quality: AudioQuality
+    ) -> Optional[Path]:
+        """Extract audio from video file.
+
+        Args:
+            video_file: Input video file path
+            quality: Audio extraction quality preset
+
+        Returns:
+            Path to extracted audio file if successful, None otherwise
+        """
+        logger.info("Step 1: Extracting audio from video")
+        audio_filename = f"{video_file.stem}.mp3"
+        audio_path = self.temp_dir / audio_filename
+
+        extractor = AudioExtractor()
+        extracted_audio = extractor.extract_audio(video_file, audio_path, quality)
+
+        if not extracted_audio:
+            logger.error("Audio extraction failed")
+            return None
+
+        logger.info(f"Audio extracted to: {extracted_audio}")
+        return extracted_audio
+
+    def _transcribe_audio_file(
+        self, audio_path: Path, provider: str, language: str
+    ) -> Optional[TranscriptionResult]:
+        """Transcribe audio file to text.
+
+        Args:
+            audio_path: Path to audio file
+            provider: Transcription provider to use ('deepgram', 'elevenlabs', 'auto')
+            language: Language code for transcription
+
+        Returns:
+            TranscriptionResult if successful, None otherwise
+        """
+        logger.info("Step 2: Transcribing audio")
+
+        transcription_service = TranscriptionService()
+        transcription_result = transcription_service.transcribe(
+            audio_path,
+            provider_name=provider if provider != "auto" else None,
+            language=language,
+        )
+
+        if not transcription_result:
+            logger.error("Transcription failed")
+            return None
+
+        logger.info("Transcription completed successfully")
+        return transcription_result
+
+    def _generate_analysis(
+        self,
+        transcription_result: TranscriptionResult,
+        output_dir: Path,
+        base_name: str,
+        analysis_style: str,
+    ) -> None:
+        """Generate analysis from transcription result.
+
+        Args:
+            transcription_result: Transcription result to analyze
+            output_dir: Directory to save analysis
+            base_name: Base name for output files
+            analysis_style: Analysis style ('concise' or 'full')
+        """
+        logger.info("Step 3: Generating analysis")
+
+        if analysis_style == "concise":
+            analyzer = ConciseAnalyzer()
+            analysis_path = analyzer.analyze_and_save(transcription_result, output_dir, base_name)
+            logger.info(f"Concise analysis saved to: {analysis_path}")
+        elif analysis_style == "full":
+            full_analyzer = FullAnalyzer()
+            files = full_analyzer.analyze_and_save(transcription_result, output_dir, base_name)
+            logger.info("Full analysis saved: " + ", ".join([p.name for p in files.values()]))
+
+    def _save_pipeline_results(
+        self,
+        transcription_result: TranscriptionResult,
+        output_dir: Path,
+        base_name: str,
+        audio_path: Path,
+    ) -> None:
+        """Save pipeline results to output directory.
+
+        Args:
+            transcription_result: Transcription result to save
+            output_dir: Directory to save results
+            base_name: Base name for output files
+            audio_path: Path to extracted audio file
+        """
+        logger.info("Step 4: Saving additional results")
+
+        # Save main transcript file
+        transcription_service = TranscriptionService()
+        transcript_path = output_dir / f"{base_name}_transcript.txt"
+        transcription_service.save_transcription_result(
+            transcription_result,
+            transcript_path,
+            provider_name=transcription_result.provider_name,
+        )
+
+        # Copy audio file to output directory
+        final_audio_path = output_dir / audio_path.name
+        if not final_audio_path.exists():
+            import shutil
+
+            shutil.copy2(audio_path, final_audio_path)
+            logger.info(f"Audio saved to: {final_audio_path}")
 
     # ---------------------- Async Progress-Enabled API ----------------------
     async def process_file(self, input_path: str, output_dir: str, **kwargs) -> Dict[str, Any]:
