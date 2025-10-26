@@ -1,31 +1,28 @@
 {
-  "task_type": "refactor",
-  "title": "Refactor large functions in transcription_cache.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/cache/transcription_cache.py**\nIssue Type: long_function\nSeverity: medium\nLine: 413\n\n**Description:** Function 'put' is 58 lines long\n**Suggested Action:** Consider breaking down put into smaller functions",
+  "task_type": "test",
+  "title": "Add tests for validation.py",
+  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/utils/validation.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "ffc71587-6825-4ad6-bbcf-e9c22f249827",
-    "source_type": "code_quality",
+    "work_item_id": "c79f06d7-1268-4751-8d7d-606fc22cd665",
+    "source_type": "test_coverage",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "quality_issue": {
-        "type": "long_function",
-        "severity": "medium",
-        "line": 413,
-        "description": "Function 'put' is 58 lines long",
-        "suggestion": "Consider breaking down put into smaller functions"
-      },
-      "discovered_at": "2025-10-26T17:12:22.558607",
-      "source_type": "code_quality"
+      "test_analysis": {
+        "work_type": "missing_tests",
+        "details": {},
+        "discovered_at": "2025-10-26T17:12:22.632717",
+        "source_type": "test_coverage"
+      }
     }
   },
-  "timestamp": "2025-10-26T18:24:41.475476",
+  "timestamp": "2025-10-26T18:25:40.128650",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

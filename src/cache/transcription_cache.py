@@ -482,39 +482,19 @@ class TranscriptionCache:
         cache_key = CacheKey.from_file(file_path, provider, settings)
         key_str = str(cache_key)
 
-        # Compress if enabled
-        cached_value = self._compress(value) if self.enable_compression else value
+        # Prepare value (compress if enabled)
+        cached_value = self._prepare_cache_value(value)
 
-        # Calculate size
+        # Calculate and validate size
         size = self._calculate_size(cached_value)
-
-        # Check size limits
-        if size > self.max_size_bytes:
-            logger.warning(f"Value too large to cache: {size} > {self.max_size_bytes}")
+        if not self._validate_entry_size(size):
             return False
 
-        # Create entry
-        entry = CacheEntry(
-            key=cache_key,
-            value=cached_value,
-            size=size,
-            ttl=ttl or self.default_ttl,
-            metadata=metadata or {},
-        )
+        # Create cache entry
+        entry = self._create_cache_entry(cache_key, cached_value, size, ttl, metadata)
 
-        with self._lock:
-            # Evict if necessary
-            self._evict_if_needed(size)
-
-            # Store in primary backend
-            success = self.backends[0].put(key_str, entry)
-
-            if success:
-                self.stats.entry_count += 1
-                self.stats.size_bytes += size
-                logger.debug(f"Cached {key_str} ({size} bytes)")
-
-            return success
+        # Store in backend
+        return self._store_entry_in_backend(key_str, entry, size)
 
     def invalidate(self, file_path: Optional[Path] = None, provider: Optional[str] = None) -> int:
         """Invalidate cache entries.
