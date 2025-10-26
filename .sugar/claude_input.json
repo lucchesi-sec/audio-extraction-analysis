@@ -1,12 +1,12 @@
 {
-  "task_type": "refactor",
-  "title": "Code review and optimization for test_cli.py",
-  "description": "Review ./tests/unit/test_cli.py for potential improvements: code clarity, performance, error handling, and best practices.",
+  "task_type": "documentation",
+  "title": "Review and improve documentation in parakeet_example.py",
+  "description": "Review the documentation and comments in ./examples/parakeet_example.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "5662af63-4a2b-4a68-b4e3-a1e1df3078a7",
+    "work_item_id": "2d2380a9-d93d-4a97-88de-1ec131dab8ca",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "refactor",
-      "discovered_at": "2025-10-26T19:40:04.046592",
+      "task_type": "documentation",
+      "discovered_at": "2025-10-26T19:40:04.046604",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T20:09:47.125418",
+  "timestamp": "2025-10-26T20:10:07.855715",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
