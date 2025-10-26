@@ -1,12 +1,12 @@
 {
-  "task_type": "documentation",
-  "title": "Review and improve documentation in test_analysis_init.py",
-  "description": "Review the documentation and comments in ./tests/unit/test_analysis_init.py and improve clarity, completeness, and accuracy.",
+  "task_type": "refactor",
+  "title": "Code review and optimization for test_ffmpeg_utils.py",
+  "description": "Review ./tests/unit/test_ffmpeg_utils.py for potential improvements: code clarity, performance, error handling, and best practices.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "9a194f73-b76a-4167-8ae4-b5698dcc24c4",
+    "work_item_id": "a8f36a1b-7d75-41a0-a4fc-bb3fdbeda260",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "documentation",
-      "discovered_at": "2025-10-26T18:24:13.485937",
+      "task_type": "refactor",
+      "discovered_at": "2025-10-26T18:24:13.485949",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:47:31.541221",
+  "timestamp": "2025-10-26T19:48:12.991929",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

@@ -10,7 +10,6 @@ Tests cover:
 """
 import logging
 import subprocess
-from functools import wraps
 from typing import Optional
 
 import pytest
@@ -105,6 +104,24 @@ class TestHandleFfmpegErrorsDecorator:
         result = default_name_func()
         assert result is None
 
+    def test_none_operation_name(self):
+        """Test that None as operation name is handled gracefully."""
+        @handle_ffmpeg_errors(None)
+        def none_name_func() -> Optional[str]:
+            raise ValueError("Test error")
+
+        result = none_name_func()
+        assert result is None
+
+    def test_empty_operation_name(self):
+        """Test that empty string as operation name is handled gracefully."""
+        @handle_ffmpeg_errors("")
+        def empty_name_func() -> Optional[str]:
+            raise ValueError("Test error")
+
+        result = empty_name_func()
+        assert result is None
+
     def test_preserves_function_metadata(self):
         """Test that decorator preserves original function metadata."""
         @handle_ffmpeg_errors("Test")
@@ -153,7 +170,8 @@ class TestHandleFfmpegErrorsDecorator:
         @handle_ffmpeg_errors("No stderr test")
         def func_without_stderr() -> Optional[str]:
             error = subprocess.CalledProcessError(1, ["ffmpeg"])
-            # Explicitly remove stderr if it exists
+            # Edge case: Ensure decorator handles CalledProcessError when stderr is missing
+            # Some subprocess calls may not populate stderr, so we test this explicitly
             if hasattr(error, 'stderr'):
                 delattr(error, 'stderr')
             raise error
@@ -288,6 +306,26 @@ class TestHandleFfmpegErrorsAsyncDecorator:
             raise ValueError("Async test error")
 
         result = await default_name_async_func()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_async_none_operation_name(self):
+        """Test that None as operation name is handled gracefully in async."""
+        @handle_ffmpeg_errors_async(None)
+        async def none_name_async_func() -> Optional[str]:
+            raise ValueError("Async test error")
+
+        result = await none_name_async_func()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_async_empty_operation_name(self):
+        """Test that empty string as operation name is handled gracefully in async."""
+        @handle_ffmpeg_errors_async("")
+        async def empty_name_async_func() -> Optional[str]:
+            raise ValueError("Async test error")
+
+        result = await empty_name_async_func()
         assert result is None
 
     @pytest.mark.asyncio
