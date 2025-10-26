@@ -484,28 +484,44 @@ class DiskCache(CacheBackend):
         conn.commit()
 
     def put(self, key: str, entry: CacheEntry) -> bool:
-        """Put entry on disk.
+        """Store a cache entry to disk with automatic eviction if needed.
+
+        Thread-safe operation that serializes and stores an entry in SQLite
+        database. Automatically evicts least recently accessed entries if
+        necessary to stay within size limits.
 
         Args:
-            key: Cache key
-            entry: Cache entry
+            key: Cache key for storage
+            entry: CacheEntry object to store (will be JSON-serialized)
 
         Returns:
-            True if successful
+            True if entry was stored successfully, False if:
+            - Entry size exceeds total cache capacity
+            - Serialization fails
+            - Database error occurs
+
+        Note:
+            Side effects:
+            - Uses INSERT OR REPLACE (updates existing entry if key exists)
+            - May evict multiple entries to make space
+            - Serializes entry to JSON and stores as BLOB
+            - Stores metadata separately for query efficiency
+            - Logs errors on failure
         """
         with self._lock:
             try:
-                # Check size
+                # Reject if entry is larger than total cache capacity
                 if entry.size > self.max_size_bytes:
                     return False
 
-                # Evict if needed
+                # Free up space by evicting old entries if needed
                 self._evict_if_needed(entry.size)
 
                 conn = self._get_connection()
                 cursor = conn.cursor()
 
-                # Serialize entry using safe JSON
+                # Serialize entry to JSON and encode as UTF-8 bytes for BLOB storage
+                # Metadata is stored separately in TEXT column for easier querying
                 entry_dict = entry.to_dict()
                 entry_data = json.dumps(entry_dict).encode('utf-8')
 
@@ -648,7 +664,8 @@ class DiskCache(CacheBackend):
         current_size = self.size()
 
         while current_size + required_size > self.max_size_bytes:
-            # Evict oldest accessed entry
+            # Find and evict the least recently accessed entry
+            # Uses indexed query on accessed_at for efficient selection
             conn = self._get_connection()
             cursor = conn.cursor()
 
@@ -662,10 +679,12 @@ class DiskCache(CacheBackend):
 
             row = cursor.fetchone()
             if row:
+                # Delete the entry and subtract its size from running total
                 cursor.execute("DELETE FROM cache_entries WHERE key = ?", (row[0],))
                 conn.commit()
                 current_size -= row[1]
             else:
+                # No more entries to evict - cache is empty
                 break
 
     def close(self):

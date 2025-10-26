@@ -379,3 +379,234 @@ class TestUtilsPackage:
         except Exception as e:
             assert isinstance(e, RetryExhaustedError)
             assert isinstance(e, Exception)
+
+    def test_retry_config_validation_max_attempts(self):
+        """Test that RetryConfig validates max_attempts parameter."""
+        from src.utils import RetryConfig
+
+        # Valid max_attempts
+        config = RetryConfig(max_attempts=1)
+        assert config.max_attempts == 1
+
+        # Invalid max_attempts should raise ValueError
+        with pytest.raises(ValueError, match="max_attempts must be at least 1"):
+            RetryConfig(max_attempts=0)
+
+        with pytest.raises(ValueError, match="max_attempts must be at least 1"):
+            RetryConfig(max_attempts=-1)
+
+    def test_retry_config_validation_base_delay(self):
+        """Test that RetryConfig validates base_delay parameter."""
+        from src.utils import RetryConfig
+
+        # Valid base_delay
+        config = RetryConfig(base_delay=0.0)
+        assert config.base_delay == 0.0
+
+        config = RetryConfig(base_delay=5.0)
+        assert config.base_delay == 5.0
+
+        # Invalid base_delay should raise ValueError
+        with pytest.raises(ValueError, match="base_delay must be non-negative"):
+            RetryConfig(base_delay=-1.0)
+
+        with pytest.raises(ValueError, match="base_delay must be non-negative"):
+            RetryConfig(base_delay=-0.1)
+
+    def test_retry_config_validation_max_delay(self):
+        """Test that RetryConfig validates max_delay parameter."""
+        from src.utils import RetryConfig
+
+        # Valid max_delay
+        config = RetryConfig(max_delay=1.0)
+        assert config.max_delay == 1.0
+
+        # max_delay less than base_delay should raise ValueError
+        with pytest.raises(ValueError, match="max_delay must be greater than or equal to base_delay"):
+            RetryConfig(base_delay=10.0, max_delay=5.0)
+
+    def test_retry_config_validation_exponential_base(self):
+        """Test that RetryConfig validates exponential_base parameter."""
+        from src.utils import RetryConfig
+
+        # Valid exponential_base
+        config = RetryConfig(exponential_base=1.5)
+        assert config.exponential_base == 1.5
+
+        # exponential_base < 1 should raise ValueError
+        with pytest.raises(ValueError, match="exponential_base must be at least 1.0"):
+            RetryConfig(exponential_base=0.5)
+
+        with pytest.raises(ValueError, match="exponential_base must be at least 1.0"):
+            RetryConfig(exponential_base=0.0)
+
+    def test_type_annotations_preserved(self):
+        """Test that type annotations are preserved when re-exporting."""
+        import typing
+        from src.utils import RetryConfig, calculate_delay, retry_sync
+
+        # Check RetryConfig has annotations
+        assert hasattr(RetryConfig, "__annotations__")
+        annotations = RetryConfig.__annotations__
+        assert "max_attempts" in annotations
+        assert "base_delay" in annotations
+        assert "max_delay" in annotations
+
+        # Check functions have return type annotations
+        if hasattr(calculate_delay, "__annotations__"):
+            assert "return" in calculate_delay.__annotations__ or len(calculate_delay.__annotations__) > 0
+
+    def test_calculate_delay_functionality(self):
+        """Test that calculate_delay function works correctly when imported from src.utils."""
+        from src.utils import calculate_delay
+
+        # Test basic exponential backoff
+        delay1 = calculate_delay(attempt=1, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=False)
+        assert delay1 == 2.0  # 1.0 * 2^1
+
+        delay2 = calculate_delay(attempt=2, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=False)
+        assert delay2 == 4.0  # 1.0 * 2^2
+
+        # Test max_delay cap
+        delay_max = calculate_delay(attempt=10, base_delay=1.0, max_delay=10.0, exponential_base=2.0, jitter=False)
+        assert delay_max == 10.0  # Capped at max_delay
+
+        # Test with jitter (result should be different each time and within bounds)
+        delay_jitter1 = calculate_delay(attempt=2, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
+        delay_jitter2 = calculate_delay(attempt=2, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
+        assert 0 <= delay_jitter1 <= 4.0
+        assert 0 <= delay_jitter2 <= 4.0
+        # With high probability, jittered values should differ (not a guarantee but very likely)
+
+    def test_is_retriable_exception_functionality(self):
+        """Test that is_retriable_exception works correctly when imported from src.utils."""
+        from src.utils import is_retriable_exception, RetryConfig
+
+        # Test with default retriable exceptions
+        config = RetryConfig()
+        assert is_retriable_exception(ConnectionError("test"), config) is True
+        assert is_retriable_exception(TimeoutError("test"), config) is True
+        assert is_retriable_exception(OSError("test"), config) is True
+        assert is_retriable_exception(ValueError("test"), config) is False
+        assert is_retriable_exception(RuntimeError("test"), config) is False
+
+        # Test with custom retriable exceptions
+        custom_config = RetryConfig(retriable_exceptions=(ValueError, KeyError))
+        assert is_retriable_exception(ValueError("test"), custom_config) is True
+        assert is_retriable_exception(KeyError("test"), custom_config) is True
+        assert is_retriable_exception(ConnectionError("test"), custom_config) is False
+
+    def test_retry_sync_decorator_functionality(self):
+        """Test that retry_sync decorator works when imported from src.utils."""
+        from src.utils import retry_sync, RetryConfig, RetryExhaustedError
+
+        call_count = 0
+
+        @retry_sync(max_attempts=3)
+        def failing_function():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ConnectionError("Network error")
+            return "success"
+
+        # Should succeed on third attempt
+        result = failing_function()
+        assert result == "success"
+        assert call_count == 3
+
+        # Test function that always fails
+        always_fail_count = 0
+
+        @retry_sync(max_attempts=2)
+        def always_failing():
+            nonlocal always_fail_count
+            always_fail_count += 1
+            raise ConnectionError("Always fails")
+
+        with pytest.raises(RetryExhaustedError) as exc_info:
+            always_failing()
+
+        assert always_fail_count == 2
+        assert exc_info.value.attempts == 2
+
+    @pytest.mark.asyncio
+    async def test_retry_async_decorator_functionality(self):
+        """Test that retry_async decorator works when imported from src.utils."""
+        from src.utils import retry_async, RetryConfig, RetryExhaustedError
+
+        call_count = 0
+
+        @retry_async(max_attempts=3)
+        async def async_failing_function():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ConnectionError("Network error")
+            return "async success"
+
+        # Should succeed on third attempt
+        result = await async_failing_function()
+        assert result == "async success"
+        assert call_count == 3
+
+    def test_module_reload_safety(self):
+        """Test that the module can be safely reloaded."""
+        import importlib
+        import src.utils
+
+        # Get original references
+        original_retry_config = src.utils.RetryConfig
+        original_calculate_delay = src.utils.calculate_delay
+
+        # Reload module
+        importlib.reload(src.utils)
+
+        # Verify exports still work
+        assert hasattr(src.utils, "RetryConfig")
+        assert hasattr(src.utils, "calculate_delay")
+        assert callable(src.utils.calculate_delay)
+
+        # Create instance to verify functionality
+        config = src.utils.RetryConfig(max_attempts=5)
+        assert config.max_attempts == 5
+
+    def test_all_exports_have_proper_origin(self):
+        """Test that all exported items come from the retry module."""
+        import src.utils
+        import src.utils.retry
+
+        # Verify each export originates from retry module
+        assert src.utils.RetryConfig is src.utils.retry.RetryConfig
+        assert src.utils.RetryExhaustedError is src.utils.retry.RetryExhaustedError
+        assert src.utils.calculate_delay is src.utils.retry.calculate_delay
+        assert src.utils.is_retriable_exception is src.utils.retry.is_retriable_exception
+        assert src.utils.retry_async is src.utils.retry.retry_async
+        assert src.utils.retry_sync is src.utils.retry.retry_sync
+        assert src.utils.retry_on_network_error is src.utils.retry.retry_on_network_error
+        assert src.utils.retry_on_network_error_async is src.utils.retry.retry_on_network_error_async
+
+    def test_retry_config_retriable_exceptions_default(self):
+        """Test that RetryConfig has proper default retriable exceptions."""
+        from src.utils import RetryConfig
+
+        config = RetryConfig()
+        assert config.retriable_exceptions is not None
+        assert isinstance(config.retriable_exceptions, tuple)
+        assert len(config.retriable_exceptions) >= 3
+        assert ConnectionError in config.retriable_exceptions
+        assert TimeoutError in config.retriable_exceptions
+        assert OSError in config.retriable_exceptions
+
+    def test_retry_config_custom_retriable_exceptions(self):
+        """Test that RetryConfig accepts custom retriable exceptions."""
+        from src.utils import RetryConfig
+
+        custom_exceptions = (ValueError, KeyError, AttributeError)
+        config = RetryConfig(retriable_exceptions=custom_exceptions)
+        assert config.retriable_exceptions == custom_exceptions
+        assert ValueError in config.retriable_exceptions
+        assert KeyError in config.retriable_exceptions
+        assert AttributeError in config.retriable_exceptions
+        # Defaults should not be present
+        assert ConnectionError not in config.retriable_exceptions
