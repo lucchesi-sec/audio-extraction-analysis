@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Code review and optimization for paths.py",
-  "description": "Review ./src/utils/paths.py for potential improvements: code clarity, performance, error handling, and best practices.",
+  "title": "Code review and optimization for audio_extraction_async.py",
+  "description": "Review ./src/services/audio_extraction_async.py for potential improvements: code clarity, performance, error handling, and best practices.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "cb06ac7b-4447-479f-88a7-f9498c839801",
+    "work_item_id": "afd5cc6f-1ed1-4ab2-92ab-f4f3923421f3",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "refactor",
-      "discovered_at": "2025-10-26T20:48:42.397677",
+      "discovered_at": "2025-10-26T20:53:38.176205",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T20:54:23.919867",
+  "timestamp": "2025-10-26T20:56:50.367069",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
