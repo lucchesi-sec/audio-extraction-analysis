@@ -401,6 +401,86 @@ class TestFIFOEviction:
         assert victim == "dummy_key"
 
 
+class TestEvictionFallbackPaths:
+    """Tests for fallback code paths when OrderedDict optimization unavailable."""
+
+    class MockBackendWithoutOrderedDict:
+        """Mock backend that doesn't use OrderedDict for fallback path testing."""
+
+        def __init__(self):
+            self._data = {}
+
+        def get(self, key: str):
+            return self._data.get(key)
+
+        def put(self, key: str, entry: CacheEntry):
+            self._data[key] = entry
+
+    def test_lru_fallback_without_ordered_dict(self):
+        """LRU should use fallback path for non-OrderedDict backends."""
+        backend = self.MockBackendWithoutOrderedDict()
+        keys = set()
+
+        base_time = datetime.now()
+
+        # Create entries with different access times
+        for i in range(3):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time,
+                accessed_at=base_time + timedelta(seconds=i),
+                access_count=1,
+                ttl=3600,
+                metadata={},
+            )
+            backend.put(key, entry)
+
+        # Should select key_0 (oldest accessed_at) via fallback path
+        victim = select_lru_victim(backend, keys)
+        assert victim == "key_0"
+
+    def test_fifo_fallback_without_ordered_dict(self):
+        """FIFO should use fallback path for non-OrderedDict backends."""
+        backend = self.MockBackendWithoutOrderedDict()
+        keys = set()
+
+        base_time = datetime.now()
+
+        # Create entries with different creation times
+        for i in range(3):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time + timedelta(seconds=i),
+                accessed_at=base_time,
+                access_count=1,
+                ttl=3600,
+                metadata={},
+            )
+            backend.put(key, entry)
+
+        # Should select key_0 (oldest created_at) via fallback path
+        victim = select_fifo_victim(backend, keys)
+        assert victim == "key_0"
+
+
 class TestEvictionEdgeCases:
     """Tests for edge cases and error handling in eviction strategies."""
 

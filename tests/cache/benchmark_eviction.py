@@ -2,6 +2,10 @@
 
 This benchmark measures the performance improvement from O(n) to O(log n) eviction.
 Tests all strategies at different cache sizes to demonstrate scalability improvements.
+
+NOTE: This is a manual performance benchmark script, not a unit test.
+For unit tests covering eviction strategy correctness, see test_eviction.py
+Run this benchmark with: python3 tests/cache/benchmark_eviction.py
 """
 from __future__ import annotations
 
