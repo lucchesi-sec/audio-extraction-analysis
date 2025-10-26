@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in test_parakeet.py",
-  "description": "Review the documentation and comments in ./examples/test_parakeet.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in backends.py",
+  "description": "Review the documentation and comments in ./src/cache/backends.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "58d5e9ea-733a-426e-85bf-f3264e4ce353",
+    "work_item_id": "4ea54170-12a1-4132-bd6c-9d92a769028b",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T17:52:36.573558",
+      "discovered_at": "2025-10-26T17:59:16.211658",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:35:17.408058",
+  "timestamp": "2025-10-26T19:35:47.601579",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

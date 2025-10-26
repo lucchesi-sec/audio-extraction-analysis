@@ -1,4 +1,16 @@
-"""Cache backend implementations."""
+"""Cache backend implementations for audio extraction.
+
+This module provides two cache backend implementations:
+
+- InMemoryCache: Fast, thread-safe in-memory cache with LRU eviction policy.
+  Best for: Small to medium-sized caches, low latency requirements.
+
+- DiskCache: Persistent SQLite-based cache with WAL mode for concurrent access.
+  Best for: Large datasets, persistence across sessions, multi-process scenarios.
+
+Both backends implement the CacheBackend interface and provide automatic size
+management with configurable limits.
+"""
 from __future__ import annotations
 
 import json
@@ -17,7 +29,32 @@ logger = logging.getLogger(__name__)
 
 
 class InMemoryCache(CacheBackend):
-    """In-memory cache backend with OrderedDict."""
+    """Thread-safe in-memory cache with LRU eviction policy.
+
+    This cache implementation stores entries in memory using an OrderedDict,
+    providing O(1) access and automatic Least Recently Used (LRU) eviction
+    when size limits are reached.
+
+    Thread Safety:
+        All operations are protected by an RLock, making this cache safe for
+        concurrent access from multiple threads within a single process.
+
+    Eviction Policy:
+        - Entries are evicted in LRU order when size limit is exceeded
+        - Each get() operation updates the access order (moves to end)
+        - Eviction is automatic and transparent during put() operations
+
+    Performance:
+        - O(1) get, put, delete operations
+        - In-memory storage provides minimal latency
+        - No persistence - data lost on process termination
+
+    Attributes:
+        max_size_bytes (int): Maximum total size in bytes across all entries
+        _cache (OrderedDict): Internal storage with LRU ordering
+        _lock (RLock): Reentrant lock for thread safety
+        _size_manager (SizeLimitManager): Tracks current cache size
+    """
 
     def __init__(self, max_size_mb: int = 100):
         """Initialize in-memory cache.
@@ -33,13 +70,19 @@ class InMemoryCache(CacheBackend):
         logger.info(f"Initialized InMemoryCache with max_size={max_size_mb}MB")
 
     def get(self, key: str) -> Optional[CacheEntry]:
-        """Get entry from memory.
+        """Retrieve a cache entry and update its LRU position.
+
+        Thread-safe operation that retrieves an entry by key and moves it to
+        the end of the access order (marking it as most recently used).
 
         Args:
-            key: Cache key
+            key: Cache key to retrieve
 
         Returns:
-            Cache entry or None
+            CacheEntry if found, None if key doesn't exist
+
+        Note:
+            Side effect: Updates LRU order by moving accessed entry to end
         """
         with self._lock:
             entry = self._cache.get(key)
@@ -49,14 +92,27 @@ class InMemoryCache(CacheBackend):
             return entry
 
     def put(self, key: str, entry: CacheEntry) -> bool:
-        """Put entry in memory.
+        """Store a cache entry with automatic eviction if needed.
+
+        Thread-safe operation that stores an entry, automatically evicting older
+        entries if necessary to stay within size limits. The key is normalized
+        before storage for consistency.
 
         Args:
-            key: Cache key
-            entry: Cache entry
+            key: Cache key (will be normalized internally)
+            entry: Cache entry to store
 
         Returns:
-            True if successful
+            True if entry was stored successfully, False if:
+            - Entry size exceeds total cache capacity
+            - Unable to free enough space through eviction
+
+        Note:
+            Side effects:
+            - Normalizes the key for consistent lookups
+            - Removes and replaces existing entry if key already exists
+            - May evict oldest entries to make space
+            - Updates size tracking
         """
         # Normalize key for consistency
         normalized_key = CacheUtils.normalize_key(key)
@@ -140,10 +196,16 @@ class InMemoryCache(CacheBackend):
             return set(self._cache.keys())
 
     def _evict_oldest(self) -> bool:
-        """Evict oldest entry.
+        """Evict the least recently used (oldest) entry from cache.
+
+        Internal method called during put() operations when space is needed.
+        Removes the first entry from the OrderedDict (least recently accessed).
 
         Returns:
-            True if evicted
+            True if an entry was evicted, False if cache was empty
+
+        Note:
+            Must be called within a lock context. Updates size tracking.
         """
         if not self._cache:
             return False
