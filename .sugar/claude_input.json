@@ -1,12 +1,12 @@
 {
   "task_type": "feature",
-  "title": "Simplify pipeline to linear execution",
-  "description": "{\n  \"priority\": 4,\n  \"type\": \"refactor\",\n  \"context\": \"Replace complex pipeline orchestration with simple linear function. Current: dual orchestration (pipeline/ + orchestration/). Reality: always extract \u2192 transcribe \u2192 analyze.\",\n  \"business_context\": \"1,500 LOC reduction. Eliminates unnecessary DAG complexity for linear 3-step process.\",\n  \"technical_requirements\": [\n    \"Create simple process_pipeline() function (150 LOC)\",\n    \"Replace WorkflowEngine with direct function calls\",\n    \"Remove dual sync/async paths (keep async only)\",\n    \"Update CLI commands to use new pipeline\",\n    \"Maintain all error handling\",\n    \"Run integration tests\"\n  ],\n  \"success_criteria\": [\n    \"Simple linear pipeline execution\",\n    \"All pipeline tests pass\",\n    \"CLI commands work correctly\",\n    \"1,500 LOC reduction achieved\"\n  ]\n}",
+  "title": "Merge command files into cli.py",
+  "description": "{\n  \"priority\": 4,\n  \"type\": \"refactor\",\n  \"context\": \"Consolidate 5 command files into single cli.py. Currently: extract_command.py, transcribe_command.py, process_command.py, export_markdown_command.py, cli_utils.py.\",\n  \"business_context\": \"Reduces file count, simplifies imports. All commands in one logical location.\",\n  \"technical_requirements\": [\n    \"Inline all command functions into src/cli.py\",\n    \"Maintain all CLI functionality\",\n    \"Keep click decorators and options\",\n    \"Delete src/commands/ directory (5 files, 600 LOC)\",\n    \"Run CLI integration tests\"\n  ],\n  \"success_criteria\": [\n    \"All commands in single cli.py (~300 LOC)\",\n    \"commands/ directory deleted\",\n    \"All CLI commands work correctly\",\n    \"Tests pass\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "47b67d63-c0a1-4c07-a347-e7e980e3d23c",
+    "work_item_id": "e75aed1b-64f3-4969-aaaa-2933f2fc9cf1",
     "source_type": "cli",
     "priority": 3,
     "attempts": 1,
@@ -15,31 +15,30 @@
     "previous_attempts": null,
     "session_context": {
       "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:45:04.127369",
+      "timestamp": "2025-10-26T16:45:05.114287",
       "parsed_description": {
         "priority": 4,
         "type": "refactor",
-        "context": "Replace complex pipeline orchestration with simple linear function. Current: dual orchestration (pipeline/ + orchestration/). Reality: always extract \u2192 transcribe \u2192 analyze.",
-        "business_context": "1,500 LOC reduction. Eliminates unnecessary DAG complexity for linear 3-step process.",
+        "context": "Consolidate 5 command files into single cli.py. Currently: extract_command.py, transcribe_command.py, process_command.py, export_markdown_command.py, cli_utils.py.",
+        "business_context": "Reduces file count, simplifies imports. All commands in one logical location.",
         "technical_requirements": [
-          "Create simple process_pipeline() function (150 LOC)",
-          "Replace WorkflowEngine with direct function calls",
-          "Remove dual sync/async paths (keep async only)",
-          "Update CLI commands to use new pipeline",
-          "Maintain all error handling",
-          "Run integration tests"
+          "Inline all command functions into src/cli.py",
+          "Maintain all CLI functionality",
+          "Keep click decorators and options",
+          "Delete src/commands/ directory (5 files, 600 LOC)",
+          "Run CLI integration tests"
         ],
         "success_criteria": [
-          "Simple linear pipeline execution",
-          "All pipeline tests pass",
-          "CLI commands work correctly",
-          "1,500 LOC reduction achieved"
+          "All commands in single cli.py (~300 LOC)",
+          "commands/ directory deleted",
+          "All CLI commands work correctly",
+          "Tests pass"
         ]
       },
       "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:04:18.805896",
+  "timestamp": "2025-10-26T17:09:05.451320",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
