@@ -1,12 +1,12 @@
 {
   "task_type": "feature",
-  "title": "Add provider utility tests",
-  "description": "{\n  \"priority\": 4,\n  \"type\": \"test\",\n  \"context\": \"src/providers/deepgram_utils.py and provider_utils.py have ZERO tests. Shared logic across all providers for response parsing, error handling, validation.\",\n  \"business_context\": \"Prevents API response parsing failures, incorrect error translation, file validation bugs.\",\n  \"technical_requirements\": [\n    \"Create tests/unit/test_deepgram_utils.py\",\n    \"Create tests/unit/test_provider_utils.py\",\n    \"Test response parsing edge cases\",\n    \"Test error code translation\",\n    \"Test file size limit enforcement\",\n    \"Test format validation\"\n  ],\n  \"success_criteria\": [\n    \"Both utility files tested\",\n    \"Edge cases covered (missing fields, invalid formats)\",\n    \"Error handling verified\",\n    \"100% coverage of utility functions\"\n  ]\n}",
+  "title": "Remove mock-heavy provider integration tests",
+  "description": "{\n  \"priority\": 3,\n  \"type\": \"test\",\n  \"context\": \"tests/e2e/test_provider_integration.py has 350 LOC testing mock behavior not real integration. All providers patched with Mock(). Tests mock orchestration not actual behavior.\",\n  \"business_context\": \"Removes misleading tests. Focus on real contract testing.\",\n  \"technical_requirements\": [\n    \"Delete mock-heavy Deepgram tests (lines 180-283)\",\n    \"Delete mock-heavy ElevenLabs tests (lines 285-365)\",\n    \"Delete fallback tests for dead orchestration code (lines 417-519)\",\n    \"Keep only real provider contract tests\",\n    \"Add provider test modes/fixtures for real testing\"\n  ],\n  \"success_criteria\": [\n    \"~350 LOC of mock tests removed\",\n    \"Only real integration tests remain\",\n    \"Tests verify actual provider contracts\",\n    \"No false confidence from mocked behavior\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "369d89e2-c3df-457c-80fe-546575b5f49a",
+    "work_item_id": "09d24db4-2277-4833-be94-d69251f41b77",
     "source_type": "cli",
     "priority": 3,
     "attempts": 1,
@@ -15,31 +15,30 @@
     "previous_attempts": null,
     "session_context": {
       "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:46:02.519310",
+      "timestamp": "2025-10-26T16:46:03.475853",
       "parsed_description": {
-        "priority": 4,
+        "priority": 3,
         "type": "test",
-        "context": "src/providers/deepgram_utils.py and provider_utils.py have ZERO tests. Shared logic across all providers for response parsing, error handling, validation.",
-        "business_context": "Prevents API response parsing failures, incorrect error translation, file validation bugs.",
+        "context": "tests/e2e/test_provider_integration.py has 350 LOC testing mock behavior not real integration. All providers patched with Mock(). Tests mock orchestration not actual behavior.",
+        "business_context": "Removes misleading tests. Focus on real contract testing.",
         "technical_requirements": [
-          "Create tests/unit/test_deepgram_utils.py",
-          "Create tests/unit/test_provider_utils.py",
-          "Test response parsing edge cases",
-          "Test error code translation",
-          "Test file size limit enforcement",
-          "Test format validation"
+          "Delete mock-heavy Deepgram tests (lines 180-283)",
+          "Delete mock-heavy ElevenLabs tests (lines 285-365)",
+          "Delete fallback tests for dead orchestration code (lines 417-519)",
+          "Keep only real provider contract tests",
+          "Add provider test modes/fixtures for real testing"
         ],
         "success_criteria": [
-          "Both utility files tested",
-          "Edge cases covered (missing fields, invalid formats)",
-          "Error handling verified",
-          "100% coverage of utility functions"
+          "~350 LOC of mock tests removed",
+          "Only real integration tests remain",
+          "Tests verify actual provider contracts",
+          "No false confidence from mocked behavior"
         ]
       },
       "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:42:41.052085",
+  "timestamp": "2025-10-26T17:49:20.724365",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

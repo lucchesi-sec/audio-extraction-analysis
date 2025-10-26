@@ -177,194 +177,6 @@ class TestProviderFactory(E2ETestBase, MockProviderMixin):
             assert sentiment_provider in ["deepgram", "elevenlabs"]
 
 
-class TestDeepgramProviderIntegration(E2ETestBase, MockProviderMixin):
-    """Test Deepgram provider integration."""
-    
-    @classmethod
-    def setup_class(cls):
-        """Setup test data for the class."""
-        cls.test_data_manager = TestDataManager()
-        cls.test_files = cls.test_data_manager.generate_all_test_files()
-    
-    def test_deepgram_provider_initialization(self):
-        """Test Deepgram provider initialization."""
-        self.set_test_env(DEEPGRAM_API_KEY="test_deepgram_key")
-        
-        with patch('src.providers.deepgram.DeepgramProvider') as mock_provider:
-            mock_instance = Mock()
-            mock_provider.return_value = mock_instance
-            
-            # Test provider creation
-            provider = mock_provider("test_deepgram_key")
-            
-            assert provider is not None
-            mock_provider.assert_called_once_with("test_deepgram_key")
-    
-    def test_deepgram_transcription_with_diarization(self):
-        """Test Deepgram transcription with speaker diarization."""
-        if "audio_only" not in self.test_files:
-            pytest.skip("Audio test file not available")
-        
-        self.set_test_env(DEEPGRAM_API_KEY="test_deepgram_key")
-        
-        # Mock Deepgram response with speaker diarization
-        mock_response = {
-            "transcript": "Hello, this is speaker one. And this is speaker two.",
-            "speakers": [
-                {"speaker": 0, "text": "Hello, this is speaker one.", "start": 0.0, "end": 2.5},
-                {"speaker": 1, "text": "And this is speaker two.", "start": 2.5, "end": 5.0}
-            ],
-            "metadata": {
-                "duration": 5.0,
-                "speakers": 2
-            }
-        }
-        
-        with patch('src.providers.deepgram.DeepgramProvider') as mock_provider:
-            mock_instance = Mock()
-            mock_instance.transcribe.return_value = mock_response
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_key")
-            result = provider.transcribe(self.test_files["audio_only"])
-            
-            assert "speakers" in result
-            assert len(result["speakers"]) == 2
-            assert result["metadata"]["speakers"] == 2
-    
-    def test_deepgram_file_size_validation(self):
-        """Test Deepgram file size validation."""
-        self.set_test_env(DEEPGRAM_API_KEY="test_deepgram_key")
-        
-        with patch('src.providers.deepgram.DeepgramProvider') as mock_provider:
-            mock_instance = Mock()
-            
-            # Test file size limit checking
-            mock_instance.validate_file_size.return_value = True
-            mock_instance.validate_file_size.side_effect = lambda size: size <= 500 * 1024 * 1024  # 500MB
-            
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_key")
-            
-            # Test valid file size
-            assert provider.validate_file_size(100 * 1024 * 1024)  # 100MB
-            
-            # Test invalid file size
-            assert not provider.validate_file_size(600 * 1024 * 1024)  # 600MB
-    
-    def test_deepgram_error_handling(self):
-        """Test Deepgram provider error handling."""
-        self.set_test_env(DEEPGRAM_API_KEY="test_deepgram_key")
-        
-        with patch('src.providers.deepgram.DeepgramProvider') as mock_provider:
-            mock_instance = Mock()
-            
-            # Test API error handling
-            mock_instance.transcribe.side_effect = Exception("API service unavailable")
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_key")
-            
-            with pytest.raises(Exception, match="API service unavailable"):
-                provider.transcribe("dummy_file.mp3")
-    
-    def test_deepgram_authentication_error(self):
-        """Test Deepgram authentication error handling."""
-        with patch('src.providers.deepgram.DeepgramProvider') as mock_provider:
-            mock_instance = Mock()
-            mock_instance.transcribe.side_effect = Exception("Authentication failed")
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("invalid_key")
-            
-            with pytest.raises(Exception, match="Authentication failed"):
-                provider.transcribe("dummy_file.mp3")
-
-
-class TestElevenLabsProviderIntegration(E2ETestBase, MockProviderMixin):
-    """Test ElevenLabs provider integration."""
-    
-    @classmethod
-    def setup_class(cls):
-        """Setup test data for the class."""
-        cls.test_data_manager = TestDataManager()
-        cls.test_files = cls.test_data_manager.generate_all_test_files()
-    
-    def test_elevenlabs_provider_initialization(self):
-        """Test ElevenLabs provider initialization."""
-        self.set_test_env(ELEVENLABS_API_KEY="test_elevenlabs_key")
-        
-        with patch('src.providers.elevenlabs.ElevenLabsProvider') as mock_provider:
-            mock_instance = Mock()
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_elevenlabs_key")
-            
-            assert provider is not None
-            mock_provider.assert_called_once_with("test_elevenlabs_key")
-    
-    def test_elevenlabs_transcription_accuracy(self):
-        """Test ElevenLabs transcription for accuracy features."""
-        if "audio_only" not in self.test_files:
-            pytest.skip("Audio test file not available")
-        
-        self.set_test_env(ELEVENLABS_API_KEY="test_elevenlabs_key")
-        
-        # Mock ElevenLabs response
-        mock_response = {
-            "transcript": "This is a high accuracy transcription from ElevenLabs.",
-            "confidence": 0.98,
-            "metadata": {
-                "duration": 10.0,
-                "model": "elevenlabs-premium"
-            }
-        }
-        
-        with patch('src.providers.elevenlabs.ElevenLabsProvider') as mock_provider:
-            mock_instance = Mock()
-            mock_instance.transcribe.return_value = mock_response
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_key")
-            result = provider.transcribe(self.test_files["audio_only"])
-            
-            assert result["confidence"] >= 0.95
-            assert "high accuracy" in result["transcript"]
-    
-    def test_elevenlabs_rate_limit_handling(self):
-        """Test ElevenLabs rate limit handling."""
-        self.set_test_env(ELEVENLABS_API_KEY="test_elevenlabs_key")
-        
-        with patch('src.providers.elevenlabs.ElevenLabsProvider') as mock_provider:
-            mock_instance = Mock()
-            mock_instance.transcribe.side_effect = Exception("Rate limit exceeded")
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_key")
-            
-            with pytest.raises(Exception, match="Rate limit exceeded"):
-                provider.transcribe("dummy_file.mp3")
-    
-    def test_elevenlabs_file_format_support(self):
-        """Test ElevenLabs supported file formats."""
-        self.set_test_env(ELEVENLABS_API_KEY="test_elevenlabs_key")
-        
-        with patch('src.providers.elevenlabs.ElevenLabsProvider') as mock_provider:
-            mock_instance = Mock()
-            
-            # Test supported formats
-            mock_instance.supports_format.side_effect = lambda fmt: fmt.lower() in ['mp3', 'wav', 'flac']
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_key")
-            
-            assert provider.supports_format("mp3")
-            assert provider.supports_format("wav")
-            assert provider.supports_format("flac")
-            assert not provider.supports_format("ogg")
-
-
 class TestWhisperProviderIntegration(E2ETestBase, MockProviderMixin):
     """Test Whisper provider integration."""
     
@@ -407,113 +219,99 @@ class TestWhisperProviderIntegration(E2ETestBase, MockProviderMixin):
             mock_instance = Mock()
             mock_instance.has_gpu_support.return_value = False  # Assume no GPU in test env
             mock_provider.return_value = mock_instance
-            
+
             provider = mock_provider()
-            
+
             # Should work without GPU
             assert not provider.has_gpu_support()
 
 
-class TestProviderFallbackScenarios(E2ETestBase, MockProviderMixin):
-    """Test provider fallback and error recovery scenarios."""
-    
-    def test_primary_provider_failure_fallback(self):
-        """Test fallback when primary provider fails."""
-        self.set_test_env(
-            DEEPGRAM_API_KEY="test_deepgram_key",
-            ELEVENLABS_API_KEY="test_elevenlabs_key"
-        )
-        
-        with patch('src.providers.factory.TranscriptionProviderFactory') as mock_factory:
-            # Mock primary provider failure
-            mock_factory.get_best_provider.return_value = "deepgram"
-            mock_factory.create_provider.side_effect = [
-                Exception("Primary provider failed"),  # First call fails
-                Mock()  # Second call succeeds (fallback)
-            ]
-            
-            # Should attempt fallback
-            with pytest.raises(Exception, match="Primary provider failed"):
-                mock_factory.create_provider("deepgram")
-    
-    def test_all_providers_failure(self):
-        """Test behavior when all providers fail."""
-        self.set_test_env(
-            DEEPGRAM_API_KEY="test_deepgram_key",
-            ELEVENLABS_API_KEY="test_elevenlabs_key"
-        )
-        
-        with patch('src.providers.factory.TranscriptionProviderFactory') as mock_factory:
-            # Mock all providers failing
-            mock_factory.get_configured_providers.return_value = ["deepgram", "elevenlabs"]
-            mock_factory.create_provider.side_effect = Exception("All providers failed")
-            
-            with pytest.raises(Exception, match="All providers failed"):
-                mock_factory.create_provider("deepgram")
-            
-            with pytest.raises(Exception, match="All providers failed"):
-                mock_factory.create_provider("elevenlabs")
-    
-    def test_graceful_degradation(self):
-        """Test graceful degradation when advanced features are unavailable."""
-        self.set_test_env(DEEPGRAM_API_KEY="test_deepgram_key")
-        
-        with patch('src.providers.deepgram.DeepgramProvider') as mock_provider:
-            mock_instance = Mock()
-            
-            # Mock feature availability
-            mock_instance.supports_speaker_diarization.return_value = False
-            mock_instance.supports_sentiment_analysis.return_value = False
-            mock_instance.transcribe.return_value = {
-                "transcript": "Basic transcription without advanced features",
-                "speakers": None,
-                "sentiment": None
-            }
-            mock_provider.return_value = mock_instance
-            
-            provider = mock_provider("test_key")
-            result = provider.transcribe("dummy_file.mp3")
-            
-            # Should still provide basic transcription
-            assert "Basic transcription" in result["transcript"]
-            assert result["speakers"] is None
-            assert result["sentiment"] is None
-    
-    def test_configuration_validation_chain(self):
-        """Test complete configuration validation chain."""
-        test_scenarios = [
-            # Scenario 1: All configured
-            {
-                "env": {"DEEPGRAM_API_KEY": "valid_key", "ELEVENLABS_API_KEY": "valid_key"},
-                "expected_providers": ["deepgram", "elevenlabs"],
-                "should_succeed": True
-            },
-            # Scenario 2: Partial configuration
-            {
-                "env": {"DEEPGRAM_API_KEY": "valid_key", "ELEVENLABS_API_KEY": ""},
-                "expected_providers": ["deepgram"],
-                "should_succeed": True
-            },
-            # Scenario 3: No configuration
-            {
-                "env": {"DEEPGRAM_API_KEY": "", "ELEVENLABS_API_KEY": ""},
-                "expected_providers": [],
-                "should_succeed": False
-            }
-        ]
-        
-        for i, scenario in enumerate(test_scenarios):
-            with self.subTest(scenario=i):
-                self.set_test_env(**scenario["env"])
-                
-                with patch('src.providers.factory.TranscriptionProviderFactory') as mock_factory:
-                    mock_factory.get_configured_providers.return_value = scenario["expected_providers"]
-                    
-                    configured = mock_factory.get_configured_providers()
-                    
-                    assert configured == scenario["expected_providers"]
-                    
-                    if scenario["should_succeed"]:
-                        assert len(configured) > 0
-                    else:
-                        assert len(configured) == 0
+# ============================================================================
+# Real Provider Contract Testing Infrastructure
+# ============================================================================
+# Use pytest markers to enable real provider testing:
+#   pytest -m "real_provider" --provider=deepgram
+#   pytest -m "real_provider" --provider=elevenlabs
+#
+# Requires valid API keys in environment:
+#   DEEPGRAM_API_KEY, ELEVENLABS_API_KEY
+# ============================================================================
+
+@pytest.fixture(scope="session")
+def real_provider_mode(request):
+    """
+    Fixture to enable real provider contract testing.
+
+    Usage:
+        pytest --real-provider-mode
+        pytest --real-provider-mode --provider=deepgram
+
+    Returns dict with:
+        - enabled: bool - whether real provider mode is active
+        - provider: str - specific provider to test (None = all available)
+    """
+    return {
+        "enabled": request.config.getoption("--real-provider-mode", default=False),
+        "provider": request.config.getoption("--provider", default=None)
+    }
+
+
+@pytest.fixture(scope="session")
+def real_provider_credentials():
+    """
+    Fixture providing real API credentials for contract testing.
+
+    Returns dict with available provider credentials:
+        - deepgram: API key or None
+        - elevenlabs: API key or None
+
+    Note: Only returns credentials that are actually set in environment.
+    """
+    return {
+        "deepgram": os.getenv("DEEPGRAM_API_KEY"),
+        "elevenlabs": os.getenv("ELEVENLABS_API_KEY")
+    }
+
+
+@pytest.fixture(scope="function")
+def real_audio_sample(tmp_path):
+    """
+    Fixture providing a small real audio file for contract testing.
+
+    Creates a minimal audio file that can be used for real provider tests
+    without consuming significant quota.
+
+    Returns:
+        Path to audio file suitable for provider contract testing
+    """
+    # In real implementation, this would generate or provide a small test audio file
+    # For now, return a path that tests can check existence of
+    audio_path = tmp_path / "contract_test_sample.mp3"
+
+    # Tests should check if this file exists and skip if not available
+    # Real implementation would generate a minimal valid audio file
+    return audio_path
+
+
+def pytest_configure(config):
+    """Register custom markers for real provider testing."""
+    config.addinivalue_line(
+        "markers",
+        "real_provider: mark test to run against real provider APIs (requires credentials)"
+    )
+
+
+def pytest_addoption(parser):
+    """Add command-line options for real provider testing."""
+    parser.addoption(
+        "--real-provider-mode",
+        action="store_true",
+        default=False,
+        help="Enable real provider contract testing (requires API keys)"
+    )
+    parser.addoption(
+        "--provider",
+        action="store",
+        default=None,
+        help="Specific provider to test in real mode (deepgram, elevenlabs, whisper)"
+    )
