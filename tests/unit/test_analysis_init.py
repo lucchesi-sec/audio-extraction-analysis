@@ -1,10 +1,24 @@
-"""Test suite for src.analysis package initialization."""
+"""Test suite for src.analysis package initialization.
+
+This module tests the src.analysis package's __init__.py to verify:
+- Module can be imported without errors
+- Package has appropriate documentation (docstring)
+- Public API exports are correctly defined via __all__
+- Analyzer classes (ConciseAnalyzer, FullAnalyzer) are properly exported
+- Wildcard imports work as expected
+- No unexpected attributes are exposed in the public API
+"""
 
 import pytest
 
 
 class TestAnalysisPackage:
-    """Test src.analysis package module structure and exports."""
+    """Test src.analysis package module structure and exports.
+
+    This test class validates the src.analysis package initialization,
+    ensuring proper module structure, documentation, and public API exports.
+    It verifies both direct and wildcard import patterns work correctly.
+    """
 
     def test_module_import(self):
         """Test that src.analysis module can be imported successfully."""

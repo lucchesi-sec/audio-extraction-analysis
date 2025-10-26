@@ -268,7 +268,19 @@ class ConciseAnalyzer:
         return content
 
     def _generate_action_items_and_intents(self, result: TranscriptionResult) -> str:
-        """Generate action items and intents section."""
+        """Generate action items and intents section.
+
+        If intent data is available from the provider, it displays unique identified
+        intents. Otherwise, uses a keyword-based heuristic to detect potential action
+        items by searching for action-oriented language:
+        - "should", "need to", "must", "will", "plan to", "going to", "have to"
+
+        Limits fallback detection to 5 potential action items to avoid noise.
+
+        Returns:
+            str: Markdown-formatted section with intents or potential action items,
+                or a message if none are detected.
+        """
         content = "## ✅ Intents & Action Items\n\n"
 
         if result.intents:
@@ -306,7 +318,17 @@ class ConciseAnalyzer:
         return content
 
     def _generate_timeline(self, result: TranscriptionResult) -> str:
-        """Generate timeline section from chapters or utterances."""
+        """Generate timeline section from chapters or utterances.
+
+        Prioritizes chapter data (topic segments) if available, otherwise falls back
+        to displaying the first 10 utterances as key moments. Chapter topics are
+        displayed with timestamps, while utterances show preview text (truncated to
+        100 characters).
+
+        Returns:
+            str: Markdown-formatted timeline with timestamps and content previews,
+                or a message if no timeline data is available.
+        """
         if not result.chapters and not result.utterances:
             return "## ⏰ Timeline\n\n*No timeline data available*"
 
@@ -331,7 +353,14 @@ class ConciseAnalyzer:
         return content
 
     def _generate_metadata(self, result: TranscriptionResult) -> str:
-        """Generate metadata section."""
+        """Generate technical metadata section.
+
+        Includes provider features, audio file path, processing timestamp, and
+        optional counts for speakers, chapters, and utterances if available.
+
+        Returns:
+            str: Markdown-formatted section with technical details and statistics.
+        """
         content = "## 📊 Technical Metadata\n\n"
         content += f"**Provider Features:** {', '.join(result.provider_features or [])}\n"
         content += f"**Audio File:** `{result.audio_file}`\n"
@@ -349,7 +378,20 @@ class ConciseAnalyzer:
         return content
 
     def _format_duration(self, seconds: float) -> str:
-        """Format duration in seconds to HH:MM:SS format."""
+        """Format duration in seconds to HH:MM:SS or MM:SS format.
+
+        Args:
+            seconds: Duration in seconds (may include fractional seconds).
+
+        Returns:
+            str: Formatted duration string. If duration is >= 1 hour, returns HH:MM:SS.
+                Otherwise, returns MM:SS format.
+
+        Examples:
+            45.0 -> "00:45"
+            125.5 -> "02:05"
+            3661.0 -> "01:01:01"
+        """
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
@@ -360,6 +402,14 @@ class ConciseAnalyzer:
             return f"{minutes:02d}:{secs:02d}"
 
     def _get_sentiment_emoji(self, sentiment: str) -> str:
-        """Get emoji for sentiment."""
+        """Get emoji representation for sentiment category.
+
+        Args:
+            sentiment: Sentiment category name (case-insensitive).
+
+        Returns:
+            str: Corresponding emoji. Returns "😊" for positive, "😔" for negative,
+                "😐" for neutral, or "🤔" for unknown/unrecognized sentiments.
+        """
         sentiment_map = {"positive": "😊", "negative": "😔", "neutral": "😐"}
         return sentiment_map.get(sentiment.lower(), "🤔")
