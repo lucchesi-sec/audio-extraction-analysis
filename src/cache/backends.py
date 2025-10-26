@@ -7,7 +7,7 @@ import sqlite3
 import time
 from collections import OrderedDict
 from pathlib import Path
-from threading import Lock, RLock
+from threading import Lock, RLock, local
 from typing import Optional, Set, Union
 
 from .common import CacheUtils, SizeLimitManager
@@ -174,44 +174,62 @@ class DiskCache(CacheBackend):
         self.max_size_bytes = max_size_mb * 1024 * 1024
         self._lock = Lock()
 
+        # Thread-local storage for connections (SQLite connections aren't thread-safe)
+        self._local = local()
+
         self._init_database()
-        logger.info(f"Initialized DiskCache at {self.cache_dir} with max_size={max_size_mb}MB")
+        logger.info(f"Initialized DiskCache at {self.cache_dir} with max_size={max_size_mb}MB (WAL mode)")
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get or create thread-local database connection.
+
+        Returns:
+            Thread-local SQLite connection
+        """
+        if not hasattr(self._local, 'conn'):
+            self._local.conn = sqlite3.connect(str(self.db_path))
+            # Enable WAL mode for concurrent reads
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
+            # Additional optimizations
+            self._local.conn.execute("PRAGMA synchronous=NORMAL")
+            self._local.conn.execute("PRAGMA temp_store=MEMORY")
+        return self._local.conn
 
     def _init_database(self):
-        """Initialize SQLite database."""
-        with sqlite3.connect(str(self.db_path)) as conn:
-            cursor = conn.cursor()
+        """Initialize SQLite database with WAL mode."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
 
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS cache_entries (
-                    key TEXT PRIMARY KEY,
-                    value BLOB NOT NULL,
-                    size INTEGER NOT NULL,
-                    created_at REAL NOT NULL,
-                    accessed_at REAL NOT NULL,
-                    access_count INTEGER DEFAULT 0,
-                    ttl INTEGER,
-                    metadata TEXT
-                )
+        cursor.execute(
             """
+            CREATE TABLE IF NOT EXISTS cache_entries (
+                key TEXT PRIMARY KEY,
+                value BLOB NOT NULL,
+                size INTEGER NOT NULL,
+                created_at REAL NOT NULL,
+                accessed_at REAL NOT NULL,
+                access_count INTEGER DEFAULT 0,
+                ttl INTEGER,
+                metadata TEXT
             )
+        """
+        )
 
-            cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_accessed 
-                ON cache_entries(accessed_at)
+        cursor.execute(
             """
-            )
+            CREATE INDEX IF NOT EXISTS idx_accessed
+            ON cache_entries(accessed_at)
+        """
+        )
 
-            cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_size 
-                ON cache_entries(size)
+        cursor.execute(
             """
-            )
+            CREATE INDEX IF NOT EXISTS idx_size
+            ON cache_entries(size)
+        """
+        )
 
-            conn.commit()
+        conn.commit()
 
     def get(self, key: str) -> Optional[CacheEntry]:
         """Get entry from disk.
@@ -224,53 +242,53 @@ class DiskCache(CacheBackend):
         """
         with self._lock:
             try:
-                with sqlite3.connect(str(self.db_path)) as conn:
-                    cursor = conn.cursor()
+                conn = self._get_connection()
+                cursor = conn.cursor()
 
+                cursor.execute(
+                    """
+                    SELECT value, size, created_at, accessed_at,
+                           access_count, ttl, metadata
+                    FROM cache_entries
+                    WHERE key = ?
+                """,
+                    (key,),
+                )
+
+                row = cursor.fetchone()
+                if row:
+                    # Update access time and count
                     cursor.execute(
                         """
-                        SELECT value, size, created_at, accessed_at, 
-                               access_count, ttl, metadata
-                        FROM cache_entries
+                        UPDATE cache_entries
+                        SET accessed_at = ?, access_count = access_count + 1
                         WHERE key = ?
                     """,
-                        (key,),
+                        (time.time(), key),
                     )
+                    conn.commit()
 
-                    row = cursor.fetchone()
-                    if row:
-                        # Update access time and count
-                        cursor.execute(
-                            """
-                            UPDATE cache_entries 
-                            SET accessed_at = ?, access_count = access_count + 1
-                            WHERE key = ?
-                        """,
-                            (time.time(), key),
-                        )
-                        conn.commit()
-
-                        # Deserialize entry using safe JSON
+                    # Deserialize entry using safe JSON
+                    try:
+                        entry_dict = json.loads(row[0].decode('utf-8'))
+                        # Import CacheEntry - handle circular import properly
                         try:
-                            entry_dict = json.loads(row[0].decode('utf-8'))
-                            # Import CacheEntry - handle circular import properly
-                            try:
-                                from .transcription_cache import CacheEntry
-                            except ImportError:
-                                # If circular import, use the already imported class
-                                CacheEntry = globals().get('CacheEntry')
-                                if not CacheEntry:
-                                    raise ImportError("CacheEntry not available")
-                            entry_data = CacheEntry.from_dict(entry_dict)
-                            return entry_data
-                        except (json.JSONDecodeError, UnicodeDecodeError, KeyError, ImportError) as e:
-                            logger.error(f"Failed to deserialize cache entry: {e}")
-                            # Clean up corrupted entry
-                            cursor.execute("DELETE FROM cache_entries WHERE key = ?", (key,))
-                            conn.commit()
-                            return None
+                            from .transcription_cache import CacheEntry
+                        except ImportError:
+                            # If circular import, use the already imported class
+                            CacheEntry = globals().get('CacheEntry')
+                            if not CacheEntry:
+                                raise ImportError("CacheEntry not available")
+                        entry_data = CacheEntry.from_dict(entry_dict)
+                        return entry_data
+                    except (json.JSONDecodeError, UnicodeDecodeError, KeyError, ImportError) as e:
+                        logger.error(f"Failed to deserialize cache entry: {e}")
+                        # Clean up corrupted entry
+                        cursor.execute("DELETE FROM cache_entries WHERE key = ?", (key,))
+                        conn.commit()
+                        return None
 
-                    return None
+                return None
 
             except Exception as e:
                 logger.error(f"Failed to get from disk cache: {e}")
@@ -295,34 +313,34 @@ class DiskCache(CacheBackend):
                 # Evict if needed
                 self._evict_if_needed(entry.size)
 
-                with sqlite3.connect(str(self.db_path)) as conn:
-                    cursor = conn.cursor()
+                conn = self._get_connection()
+                cursor = conn.cursor()
 
-                    # Serialize entry using safe JSON
-                    entry_dict = entry.to_dict()
-                    entry_data = json.dumps(entry_dict).encode('utf-8')
+                # Serialize entry using safe JSON
+                entry_dict = entry.to_dict()
+                entry_data = json.dumps(entry_dict).encode('utf-8')
 
-                    cursor.execute(
-                        """
-                        INSERT OR REPLACE INTO cache_entries
-                        (key, value, size, created_at, accessed_at, 
-                         access_count, ttl, metadata)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                        (
-                            key,
-                            entry_data,
-                            entry.size,
-                            entry.created_at.timestamp(),
-                            entry.accessed_at.timestamp(),
-                            entry.access_count,
-                            entry.ttl,
-                            json.dumps(entry.metadata),
-                        ),
-                    )
+                cursor.execute(
+                    """
+                    INSERT OR REPLACE INTO cache_entries
+                    (key, value, size, created_at, accessed_at,
+                     access_count, ttl, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        key,
+                        entry_data,
+                        entry.size,
+                        entry.created_at.timestamp(),
+                        entry.accessed_at.timestamp(),
+                        entry.access_count,
+                        entry.ttl,
+                        json.dumps(entry.metadata),
+                    ),
+                )
 
-                    conn.commit()
-                    return True
+                conn.commit()
+                return True
 
             except Exception as e:
                 logger.error(f"Failed to put in disk cache: {e}")
@@ -339,11 +357,11 @@ class DiskCache(CacheBackend):
         """
         with self._lock:
             try:
-                with sqlite3.connect(str(self.db_path)) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM cache_entries WHERE key = ?", (key,))
-                    count = cursor.fetchone()[0]
-                    return count > 0
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM cache_entries WHERE key = ?", (key,))
+                count = cursor.fetchone()[0]
+                return count > 0
             except Exception as e:
                 logger.error(f"Failed to check disk cache exists: {e}")
                 return False
@@ -359,11 +377,11 @@ class DiskCache(CacheBackend):
         """
         with self._lock:
             try:
-                with sqlite3.connect(str(self.db_path)) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("DELETE FROM cache_entries WHERE key = ?", (key,))
-                    conn.commit()
-                    return cursor.rowcount > 0
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM cache_entries WHERE key = ?", (key,))
+                conn.commit()
+                return cursor.rowcount > 0
 
             except Exception as e:
                 logger.error(f"Failed to delete from disk cache: {e}")
@@ -377,13 +395,13 @@ class DiskCache(CacheBackend):
         """
         with self._lock:
             try:
-                with sqlite3.connect(str(self.db_path)) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT COUNT(*) FROM cache_entries")
-                    count = cursor.fetchone()[0]
-                    cursor.execute("DELETE FROM cache_entries")
-                    conn.commit()
-                    return count
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM cache_entries")
+                count = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM cache_entries")
+                conn.commit()
+                return count
 
             except Exception as e:
                 logger.error(f"Failed to clear disk cache: {e}")
@@ -396,11 +414,11 @@ class DiskCache(CacheBackend):
             Size in bytes
         """
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT SUM(size) FROM cache_entries")
-                result = cursor.fetchone()[0]
-                return result or 0
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT SUM(size) FROM cache_entries")
+            result = cursor.fetchone()[0]
+            return result or 0
 
         except Exception as e:
             logger.error(f"Failed to get disk cache size: {e}")
@@ -413,10 +431,10 @@ class DiskCache(CacheBackend):
             Set of keys
         """
         try:
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT key FROM cache_entries")
-                return {row[0] for row in cursor.fetchall()}
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT key FROM cache_entries")
+            return {row[0] for row in cursor.fetchall()}
 
         except Exception as e:
             logger.error(f"Failed to get disk cache keys: {e}")
@@ -432,21 +450,34 @@ class DiskCache(CacheBackend):
 
         while current_size + required_size > self.max_size_bytes:
             # Evict oldest accessed entry
-            with sqlite3.connect(str(self.db_path)) as conn:
-                cursor = conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
 
-                cursor.execute(
-                    """
-                    SELECT key, size FROM cache_entries
-                    ORDER BY accessed_at ASC
-                    LIMIT 1
+            cursor.execute(
                 """
-                )
+                SELECT key, size FROM cache_entries
+                ORDER BY accessed_at ASC
+                LIMIT 1
+            """
+            )
 
-                row = cursor.fetchone()
-                if row:
-                    cursor.execute("DELETE FROM cache_entries WHERE key = ?", (row[0],))
-                    conn.commit()
-                    current_size -= row[1]
-                else:
-                    break
+            row = cursor.fetchone()
+            if row:
+                cursor.execute("DELETE FROM cache_entries WHERE key = ?", (row[0],))
+                conn.commit()
+                current_size -= row[1]
+            else:
+                break
+
+    def close(self):
+        """Close database connections.
+
+        Should be called when the cache is no longer needed to ensure
+        proper cleanup of database connections.
+        """
+        if hasattr(self._local, 'conn'):
+            try:
+                self._local.conn.close()
+                delattr(self._local, 'conn')
+            except Exception as e:
+                logger.error(f"Failed to close database connection: {e}")

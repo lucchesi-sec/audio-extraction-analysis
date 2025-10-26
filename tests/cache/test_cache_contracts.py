@@ -219,38 +219,166 @@ class TestCacheContract:
         """Test basic thread safety of operations."""
         import threading
         import time
-        
+
         for backend in cache_backends:
             backend.clear()
             results = []
-            
+
             def worker(worker_id: int):
                 """Worker function for concurrent testing."""
                 key = f"concurrent_{worker_id}"
                 # Put entry
                 put_result = backend.put(key, sample_cache_entry)
                 results.append(put_result)
-                
+
                 # Small delay to allow interleaving
                 time.sleep(0.001)
-                
+
                 # Get entry
                 get_result = backend.get(key)
                 results.append(get_result is not None)
-            
+
             # Run multiple threads
             threads = []
             for i in range(5):
                 thread = threading.Thread(target=worker, args=(i,))
                 threads.append(thread)
                 thread.start()
-            
+
             # Wait for all threads
             for thread in threads:
                 thread.join()
-            
+
             # Check that all operations succeeded
             assert all(results), f"{type(backend)} concurrent operations failed"
+
+    def test_concurrent_reads(self, cache_backends: List[BaseCache], sample_cache_entry: CacheEntry):
+        """Test concurrent read operations with WAL mode benefits."""
+        import threading
+
+        for backend in cache_backends:
+            backend.clear()
+
+            # Put a single entry
+            test_key = "concurrent_read_key"
+            backend.put(test_key, sample_cache_entry)
+
+            read_results = []
+            errors = []
+
+            def reader(reader_id: int):
+                """Reader function for concurrent testing."""
+                try:
+                    for _ in range(10):
+                        entry = backend.get(test_key)
+                        read_results.append(entry is not None)
+                except Exception as e:
+                    errors.append(e)
+
+            # Run multiple concurrent readers
+            threads = []
+            for i in range(10):
+                thread = threading.Thread(target=reader, args=(i,))
+                threads.append(thread)
+                thread.start()
+
+            # Wait for all threads
+            for thread in threads:
+                thread.join()
+
+            # Check that all reads succeeded
+            assert len(errors) == 0, f"{type(backend)} concurrent reads had errors: {errors}"
+            assert all(read_results), f"{type(backend)} concurrent reads failed"
+            assert len(read_results) == 100, f"{type(backend)} expected 100 reads, got {len(read_results)}"
+
+    def test_concurrent_writes(self, cache_backends: List[BaseCache], sample_cache_entry: CacheEntry):
+        """Test concurrent write operations."""
+        import threading
+
+        for backend in cache_backends:
+            backend.clear()
+
+            write_results = []
+            errors = []
+
+            def writer(writer_id: int):
+                """Writer function for concurrent testing."""
+                try:
+                    for i in range(5):
+                        key = f"concurrent_write_{writer_id}_{i}"
+                        result = backend.put(key, sample_cache_entry)
+                        write_results.append(result)
+                except Exception as e:
+                    errors.append(e)
+
+            # Run multiple concurrent writers
+            threads = []
+            for i in range(10):
+                thread = threading.Thread(target=writer, args=(i,))
+                threads.append(thread)
+                thread.start()
+
+            # Wait for all threads
+            for thread in threads:
+                thread.join()
+
+            # Check that all writes succeeded
+            assert len(errors) == 0, f"{type(backend)} concurrent writes had errors: {errors}"
+            assert all(write_results), f"{type(backend)} concurrent writes failed"
+            assert len(write_results) == 50, f"{type(backend)} expected 50 writes, got {len(write_results)}"
+
+    def test_concurrent_mixed_operations(self, cache_backends: List[BaseCache], sample_cache_entry: CacheEntry):
+        """Test mixed concurrent operations (reads, writes, deletes)."""
+        import threading
+        import random
+
+        for backend in cache_backends:
+            backend.clear()
+
+            # Pre-populate with some entries
+            for i in range(10):
+                backend.put(f"mixed_{i}", sample_cache_entry)
+
+            operation_results = []
+            errors = []
+
+            def mixed_worker(worker_id: int):
+                """Worker with mixed operations."""
+                try:
+                    for i in range(10):
+                        op = random.choice(['read', 'write', 'delete', 'exists'])
+                        key = f"mixed_{random.randint(0, 19)}"
+
+                        if op == 'read':
+                            result = backend.get(key)
+                            operation_results.append(('read', result is not None or result is None))
+                        elif op == 'write':
+                            result = backend.put(key, sample_cache_entry)
+                            operation_results.append(('write', result))
+                        elif op == 'delete':
+                            result = backend.delete(key)
+                            operation_results.append(('delete', True))
+                        elif op == 'exists':
+                            result = backend.exists(key)
+                            operation_results.append(('exists', True))
+                except Exception as e:
+                    errors.append(e)
+
+            # Run multiple threads with mixed operations
+            threads = []
+            for i in range(10):
+                thread = threading.Thread(target=mixed_worker, args=(i,))
+                threads.append(thread)
+                thread.start()
+
+            # Wait for all threads
+            for thread in threads:
+                thread.join()
+
+            # Check that no errors occurred
+            assert len(errors) == 0, f"{type(backend)} mixed concurrent operations had errors: {errors}"
+            # All operations should complete successfully
+            assert all(result[1] for result in operation_results), f"{type(backend)} some operations failed"
 
 
 class TestCacheUtilities:

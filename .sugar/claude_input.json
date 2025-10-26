@@ -1,12 +1,12 @@
 {
   "task_type": "feature",
-  "title": "Cache file hashes to eliminate redundant I/O",
-  "description": "{\n  \"priority\": 3,\n  \"type\": \"refactor\",\n  \"context\": \"Cache get/put rehashes entire audio file. 2GB file = 260k chunk reads per operation. Store hash in memory keyed by (path, mtime, size).\",\n  \"business_context\": \"Eliminates 99% of redundant file I/O. Critical for large files.\",\n  \"technical_requirements\": [\n    \"Add _file_hash_cache: dict keyed by (path, mtime, size)\",\n    \"Check cache before hashing in _hash_file()\",\n    \"Invalidate cache entry when file changes\",\n    \"Update src/cache/transcription_cache.py (lines 80-106)\",\n    \"Add tests for cache invalidation on file change\"\n  ],\n  \"success_criteria\": [\n    \"File only hashed once per (path, mtime, size)\",\n    \"Benchmark shows 50-100x faster cache operations\",\n    \"Tests verify cache invalidation works\",\n    \"Large file operations near-instant\"\n  ]\n}",
+  "title": "Add DiskCache connection pooling",
+  "description": "{\n  \"priority\": 3,\n  \"type\": \"refactor\",\n  \"context\": \"DiskCache opens new SQLite connection per operation (1-5ms overhead). Replace with persistent connection + WAL mode for concurrent reads.\",\n  \"business_context\": \"5-10x throughput improvement for cache operations.\",\n  \"technical_requirements\": [\n    \"Maintain persistent connection in __init__\",\n    \"Enable WAL mode: PRAGMA journal_mode=WAL\",\n    \"Add connection per thread if needed\",\n    \"Update src/cache/backends.py (lines 216-277)\",\n    \"Add concurrent access tests\"\n  ],\n  \"success_criteria\": [\n    \"Single persistent connection per DiskCache instance\",\n    \"WAL mode enabled\",\n    \"Benchmark shows 5-10x throughput\",\n    \"Tests pass including concurrent access\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "f859ebb4-a624-44c6-ae58-9e1be78b9a7d",
+    "work_item_id": "79687164-789a-45d2-a49c-08e6caa9d146",
     "source_type": "cli",
     "priority": 3,
     "attempts": 1,
@@ -15,30 +15,30 @@
     "previous_attempts": null,
     "session_context": {
       "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:45:31.105721",
+      "timestamp": "2025-10-26T16:45:32.160781",
       "parsed_description": {
         "priority": 3,
         "type": "refactor",
-        "context": "Cache get/put rehashes entire audio file. 2GB file = 260k chunk reads per operation. Store hash in memory keyed by (path, mtime, size).",
-        "business_context": "Eliminates 99% of redundant file I/O. Critical for large files.",
+        "context": "DiskCache opens new SQLite connection per operation (1-5ms overhead). Replace with persistent connection + WAL mode for concurrent reads.",
+        "business_context": "5-10x throughput improvement for cache operations.",
         "technical_requirements": [
-          "Add _file_hash_cache: dict keyed by (path, mtime, size)",
-          "Check cache before hashing in _hash_file()",
-          "Invalidate cache entry when file changes",
-          "Update src/cache/transcription_cache.py (lines 80-106)",
-          "Add tests for cache invalidation on file change"
+          "Maintain persistent connection in __init__",
+          "Enable WAL mode: PRAGMA journal_mode=WAL",
+          "Add connection per thread if needed",
+          "Update src/cache/backends.py (lines 216-277)",
+          "Add concurrent access tests"
         ],
         "success_criteria": [
-          "File only hashed once per (path, mtime, size)",
-          "Benchmark shows 50-100x faster cache operations",
-          "Tests verify cache invalidation works",
-          "Large file operations near-instant"
+          "Single persistent connection per DiskCache instance",
+          "WAL mode enabled",
+          "Benchmark shows 5-10x throughput",
+          "Tests pass including concurrent access"
         ]
       },
       "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:19:01.094020",
+  "timestamp": "2025-10-26T17:22:55.323036",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
