@@ -525,6 +525,86 @@ def export_markdown_transcript(args: argparse.Namespace, input_path: Path, resul
         logger.error(f"Markdown export failed: {e}")
 
 
+def _determine_transcribe_output_path(input_path: Path, output_arg: Optional[str]) -> Path:
+    """Determine output path for transcription.
+
+    Args:
+        input_path: Input audio file path
+        output_arg: Optional output path from command arguments
+
+    Returns:
+        Path for output transcript file
+    """
+    if output_arg:
+        return Path(output_arg)
+    # Safely build default transcript path: <stem>_transcript.txt
+    return input_path.parent / f"{input_path.stem}_transcript.txt"
+
+
+def _execute_transcription(
+    transcription_service: TranscriptionService,
+    input_path: Path,
+    provider: str,
+    language: str,
+) -> Any:
+    """Execute transcription with the service.
+
+    Args:
+        transcription_service: TranscriptionService instance
+        input_path: Input audio file path
+        provider: Provider name or "auto"
+        language: Language code
+
+    Returns:
+        Transcription result object or None if failed
+    """
+    provider_name = provider if provider != "auto" else None
+    result = transcription_service.transcribe(
+        input_path,
+        provider_name=provider_name,
+        language=language,
+    )
+    return result
+
+
+def _handle_transcribe_success(
+    result: Any,
+    transcription_service: TranscriptionService,
+    output_path: Path,
+    console_manager: Optional[ConsoleManager],
+    args: argparse.Namespace,
+    input_path: Path,
+) -> None:
+    """Handle successful transcription result.
+
+    Args:
+        result: Transcription result object
+        transcription_service: TranscriptionService instance
+        output_path: Output file path for transcript
+        console_manager: Optional console manager for rich output
+        args: Command line arguments
+        input_path: Input audio file path
+    """
+    # Save result to file using service
+    transcription_service.save_transcription_result(
+        result, output_path, provider_name=result.provider_name
+    )
+
+    if console_manager:
+        console_manager.print_stage("Transcription", "complete")
+
+    logger.info("Transcription completed successfully")
+    logger.info(f"Provider: {result.provider_name}")
+    logger.info(f"Transcript length: {len(result.transcript):,} characters")
+    logger.info(f"Duration: {result.duration:.1f} seconds")
+    logger.info(f"Speakers detected: {len(result.speakers or [])}")
+    logger.info(f"Output saved to: {output_path}")
+
+    # Optional Markdown export if requested
+    if getattr(args, "export_markdown", False):
+        export_markdown_transcript(args, input_path, result)
+
+
 def transcribe_command(args: argparse.Namespace, console_manager: Optional[ConsoleManager] = None) -> int:
     """Handle the transcribe subcommand.
 
@@ -543,46 +623,25 @@ def transcribe_command(args: argparse.Namespace, console_manager: Optional[Conso
             return 1
 
         # Determine output path
-        if args.output:
-            output_path = Path(args.output)
-        else:
-            # Safely build default transcript path: <stem>_transcript.txt
-            output_path = input_path.parent / f"{input_path.stem}_transcript.txt"
+        output_path = _determine_transcribe_output_path(input_path, args.output)
 
+        # Setup logging and display
         if console_manager:
             console_manager.setup_logging(logger)
             console_manager.print_stage("Transcription", "starting")
         logger.info(f"Transcribing {input_path} in {args.language} using {args.provider}")
 
-        # Create transcription service
+        # Create transcription service and execute transcription
         transcription_service = TranscriptionService()
-
-        # Transcribe audio
-        result = transcription_service.transcribe(
-            input_path,
-            provider_name=args.provider if args.provider != "auto" else None,
-            language=args.language,
+        result = _execute_transcription(
+            transcription_service, input_path, args.provider, args.language
         )
 
+        # Handle result
         if result:
-            # Save result to file using service
-            transcription_service.save_transcription_result(
-                result, output_path, provider_name=result.provider_name
+            _handle_transcribe_success(
+                result, transcription_service, output_path, console_manager, args, input_path
             )
-
-            if console_manager:
-                console_manager.print_stage("Transcription", "complete")
-            logger.info("Transcription completed successfully")
-            logger.info(f"Provider: {result.provider_name}")
-            logger.info(f"Transcript length: {len(result.transcript):,} characters")
-            logger.info(f"Duration: {result.duration:.1f} seconds")
-            logger.info(f"Speakers detected: {len(result.speakers or [])}")
-            logger.info(f"Output saved to: {output_path}")
-
-            # Optional Markdown export if requested
-            if getattr(args, "export_markdown", False):
-                export_markdown_transcript(args, input_path, result)
-
             return 0
         else:
             logger.error("Transcription failed")
