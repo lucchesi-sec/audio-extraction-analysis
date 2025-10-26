@@ -1,5 +1,6 @@
 """Simplified configuration management using environment variables."""
 import os
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -30,6 +31,56 @@ def _getenv(key: str, default: str = "") -> str:
     return os.getenv(key, default)
 
 
+def _getenv_int(key: str, default: int) -> int:
+    """Get integer environment variable with validation.
+
+    Args:
+        key: Environment variable name
+        default: Default value if not set
+
+    Returns:
+        Parsed integer value
+
+    Raises:
+        ValueError: If value cannot be parsed as integer
+    """
+    value = os.getenv(key)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid integer value for {key}='{value}'. "
+            f"Expected integer, got: {value}"
+        ) from e
+
+
+def _getenv_float(key: str, default: float) -> float:
+    """Get float environment variable with validation.
+
+    Args:
+        key: Environment variable name
+        default: Default value if not set
+
+    Returns:
+        Parsed float value
+
+    Raises:
+        ValueError: If value cannot be parsed as float
+    """
+    value = os.getenv(key)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError as e:
+        raise ValueError(
+            f"Invalid float value for {key}='{value}'. "
+            f"Expected float, got: {value}"
+        ) from e
+
+
 @dataclass
 class Config:
     """Application configuration loaded from environment variables."""
@@ -45,7 +96,7 @@ class Config:
     temp_dir: Path = field(default_factory=lambda: Path(_getenv("TEMP_DIR", "/tmp")))
 
     # ========== File Handling ==========
-    max_file_size: int = field(default_factory=lambda: int(_getenv("MAX_FILE_SIZE", "100000000")))
+    max_file_size: int = field(default_factory=lambda: _getenv_int("MAX_FILE_SIZE", 100000000))
     allowed_extensions: List[str] = field(
         default_factory=lambda: _parse_list(_getenv("ALLOWED_EXTENSIONS", ".mp3,.wav,.m4a,.flac,.ogg,.aac"))
     )
@@ -87,42 +138,42 @@ class Config:
     enable_api_key_validation: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_API_KEY_VALIDATION", "true")))
     enable_rate_limiting: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_RATE_LIMITING", "true")))
     enable_input_sanitization: bool = field(default_factory=lambda: _parse_bool(_getenv("ENABLE_INPUT_SANITIZATION", "true")))
-    rate_limit_window: int = field(default_factory=lambda: int(_getenv("RATE_LIMIT_WINDOW", "60")))
-    rate_limit_max_requests: int = field(default_factory=lambda: int(_getenv("RATE_LIMIT_MAX_REQUESTS", "100")))
+    rate_limit_window: int = field(default_factory=lambda: _getenv_int("RATE_LIMIT_WINDOW", 60))
+    rate_limit_max_requests: int = field(default_factory=lambda: _getenv_int("RATE_LIMIT_MAX_REQUESTS", 100))
     ssl_verify: bool = field(default_factory=lambda: _parse_bool(_getenv("SSL_VERIFY", "true")))
-    request_timeout: int = field(default_factory=lambda: int(_getenv("REQUEST_TIMEOUT", "30")))
+    request_timeout: int = field(default_factory=lambda: _getenv_int("REQUEST_TIMEOUT", 30))
 
     # ========== Performance Settings ==========
-    max_workers: int = field(default_factory=lambda: int(_getenv("MAX_WORKERS", "4")))
-    max_concurrent_requests: int = field(default_factory=lambda: int(_getenv("MAX_CONCURRENT_REQUESTS", "10")))
-    thread_pool_size: int = field(default_factory=lambda: int(_getenv("THREAD_POOL_SIZE", "10")))
-    process_pool_size: int = field(default_factory=lambda: int(_getenv("PROCESS_POOL_SIZE", "4")))
+    max_workers: int = field(default_factory=lambda: _getenv_int("MAX_WORKERS", 4))
+    max_concurrent_requests: int = field(default_factory=lambda: _getenv_int("MAX_CONCURRENT_REQUESTS", 10))
+    thread_pool_size: int = field(default_factory=lambda: _getenv_int("THREAD_POOL_SIZE", 10))
+    process_pool_size: int = field(default_factory=lambda: _getenv_int("PROCESS_POOL_SIZE", 4))
 
     # ========== Timeout Settings ==========
-    global_timeout: int = field(default_factory=lambda: int(_getenv("GLOBAL_TIMEOUT", "600")))
-    connect_timeout: int = field(default_factory=lambda: int(_getenv("CONNECT_TIMEOUT", "10")))
-    read_timeout: int = field(default_factory=lambda: int(_getenv("READ_TIMEOUT", "30")))
-    write_timeout: int = field(default_factory=lambda: int(_getenv("WRITE_TIMEOUT", "30")))
+    global_timeout: int = field(default_factory=lambda: _getenv_int("GLOBAL_TIMEOUT", 600))
+    connect_timeout: int = field(default_factory=lambda: _getenv_int("CONNECT_TIMEOUT", 10))
+    read_timeout: int = field(default_factory=lambda: _getenv_int("READ_TIMEOUT", 30))
+    write_timeout: int = field(default_factory=lambda: _getenv_int("WRITE_TIMEOUT", 30))
 
     # ========== Retry Settings ==========
-    max_retries: int = field(default_factory=lambda: int(_getenv("MAX_API_RETRIES", "3")))
-    retry_delay: float = field(default_factory=lambda: float(_getenv("API_RETRY_DELAY", "1.0")))
-    max_retry_delay: float = field(default_factory=lambda: float(_getenv("MAX_RETRY_DELAY", "60.0")))
-    retry_exponential_base: float = field(default_factory=lambda: float(_getenv("RETRY_EXPONENTIAL_BASE", "2.0")))
+    max_retries: int = field(default_factory=lambda: _getenv_int("MAX_API_RETRIES", 3))
+    retry_delay: float = field(default_factory=lambda: _getenv_float("API_RETRY_DELAY", 1.0))
+    max_retry_delay: float = field(default_factory=lambda: _getenv_float("MAX_RETRY_DELAY", 60.0))
+    retry_exponential_base: float = field(default_factory=lambda: _getenv_float("RETRY_EXPONENTIAL_BASE", 2.0))
     retry_jitter: bool = field(default_factory=lambda: _parse_bool(_getenv("RETRY_JITTER_ENABLED", "true")))
 
     # ========== Circuit Breaker Settings ==========
     circuit_breaker_enabled: bool = field(default_factory=lambda: _parse_bool(_getenv("CIRCUIT_BREAKER_ENABLED", "true")))
-    circuit_breaker_failure_threshold: int = field(default_factory=lambda: int(_getenv("CIRCUIT_BREAKER_FAILURE_THRESHOLD", "5")))
-    circuit_breaker_recovery_timeout: float = field(default_factory=lambda: float(_getenv("CIRCUIT_BREAKER_RECOVERY_TIMEOUT", "60.0")))
+    circuit_breaker_failure_threshold: int = field(default_factory=lambda: _getenv_int("CIRCUIT_BREAKER_FAILURE_THRESHOLD", 5))
+    circuit_breaker_recovery_timeout: float = field(default_factory=lambda: _getenv_float("CIRCUIT_BREAKER_RECOVERY_TIMEOUT", 60.0))
 
     # ========== Batch Processing ==========
-    batch_size: int = field(default_factory=lambda: int(_getenv("BATCH_SIZE", "5")))
-    batch_timeout: int = field(default_factory=lambda: int(_getenv("BATCH_TIMEOUT", "60")))
+    batch_size: int = field(default_factory=lambda: _getenv_int("BATCH_SIZE", 5))
+    batch_timeout: int = field(default_factory=lambda: _getenv_int("BATCH_TIMEOUT", 60))
 
     # ========== Caching ==========
-    cache_ttl: int = field(default_factory=lambda: int(_getenv("CACHE_TTL", "3600")))
-    cache_max_size: int = field(default_factory=lambda: int(_getenv("CACHE_MAX_SIZE", "1000")))
+    cache_ttl: int = field(default_factory=lambda: _getenv_int("CACHE_TTL", 3600))
+    cache_max_size: int = field(default_factory=lambda: _getenv_int("CACHE_MAX_SIZE", 1000))
 
     # ========== UI Settings ==========
     output_format: str = field(default_factory=lambda: _getenv("OUTPUT_FORMAT", "text").lower())
@@ -167,6 +218,21 @@ class Config:
         """Ensure required directories exist."""
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def __repr__(self) -> str:
+        """Return repr with redacted API keys for security."""
+        sensitive_fields = {
+            'DEEPGRAM_API_KEY', 'ELEVENLABS_API_KEY', 'GEMINI_API_KEY',
+            'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'
+        }
+        items = []
+        for field_name in self.__dataclass_fields__:
+            value = getattr(self, field_name)
+            if field_name in sensitive_fields and value:
+                items.append(f"{field_name}='***REDACTED***'")
+            else:
+                items.append(f"{field_name}={value!r}")
+        return f"Config({', '.join(items)})"
 
     # ========== Backward Compatibility Properties ==========
 
@@ -376,15 +442,19 @@ class Config:
         return file_path.suffix.lower() in config.allowed_extensions
 
 
-# Singleton instance
+# Singleton instance with thread-safe initialization
 _config_instance: Optional[Config] = None
+_config_lock = threading.Lock()
 
 
 def get_config() -> Config:
-    """Get global config instance (singleton pattern)."""
+    """Get global config instance (singleton pattern, thread-safe)."""
     global _config_instance
     if _config_instance is None:
-        _config_instance = Config()
+        with _config_lock:
+            # Double-check pattern to prevent race conditions
+            if _config_instance is None:
+                _config_instance = Config()
     return _config_instance
 
 
