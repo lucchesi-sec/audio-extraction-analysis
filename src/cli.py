@@ -41,6 +41,9 @@ except ImportError:  # pragma: no cover - fallback for installed package layout
 
 __version__ = "1.0.0+emergency"
 
+# Module-level constants
+DEFAULT_OUTPUT_DIR = "output"
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,7 +211,10 @@ def _create_export_markdown_subparser(subparsers) -> None:
     )
     export_md_parser.add_argument("audio_path", help="Path to audio file")
     export_md_parser.add_argument(
-        "--output-dir", "-o", default="./output", help="Output directory (default: ./output)"
+        "--output-dir",
+        "-o",
+        default=f"./{DEFAULT_OUTPUT_DIR}",
+        help=f"Output directory (default: ./{DEFAULT_OUTPUT_DIR})",
     )
     export_md_parser.add_argument(
         "--provider",
@@ -467,7 +473,7 @@ def export_markdown_transcript(args: argparse.Namespace, input_path: Path, resul
         result: Transcription result
     """
     try:
-        out_root = Path(getattr(args, "markdown_output_dir", "output"))
+        out_root = Path(getattr(args, "markdown_output_dir", DEFAULT_OUTPUT_DIR))
         safe_name = sanitize_dirname(input_path.stem)
         base_dir = ensure_subpath(out_root, Path(safe_name))
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -683,7 +689,7 @@ def _setup_process_output_dir(args: argparse.Namespace) -> Path:
     if args.output_dir:
         output_dir = Path(args.output_dir)
     else:
-        output_dir = Path("output")
+        output_dir = Path(DEFAULT_OUTPUT_DIR)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
@@ -728,8 +734,6 @@ def _execute_processing_pipeline(
         result = pipeline_result.get("transcript")
     else:
         result = None
-
-    if not pipeline_result.get("success", False):
         errors = pipeline_result.get("errors", ["Unknown error"])
         logger.error(f"Pipeline processing failed: {', '.join(errors)}")
         # Targeted diagnostics: dump stage results and context

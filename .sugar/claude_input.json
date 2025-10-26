@@ -1,12 +1,12 @@
 {
-  "task_type": "refactor",
-  "title": "Code review and optimization for cli.py",
-  "description": "Review ./src/cli.py for potential improvements: code clarity, performance, error handling, and best practices.",
+  "task_type": "documentation",
+  "title": "Review and improve documentation in test_transcription_progress.py",
+  "description": "Review the documentation and comments in ./tests/unit/test_transcription_progress.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "07619d4f-aebd-4ef8-ae2c-388766d13de1",
+    "work_item_id": "8ad3d039-d942-40b9-ac8f-a174e865b7b3",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "refactor",
-      "discovered_at": "2025-10-26T16:50:23.661284",
+      "task_type": "documentation",
+      "discovered_at": "2025-10-26T17:01:21.180641",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:03:40.235888",
+  "timestamp": "2025-10-26T19:07:24.749573",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
