@@ -1,34 +1,45 @@
 {
-  "task_type": "test",
-  "title": "Add tests for complex function in config.py",
-  "description": "**Complex Function Needs Testing**\n\nFile: /home/enzo/audio-extraction-analysis/src/config.py\nFunction: validate\nComplexity: 9\nLines: 37\n\nThis complex function should have comprehensive test coverage to ensure reliability.",
+  "task_type": "feature",
+  "title": "Consolidate Parakeet provider into single file",
+  "description": "{\n  \"priority\": 4,\n  \"type\": \"refactor\",\n  \"context\": \"Merge 5 Parakeet files into single parakeet.py (~420 LOC). Currently split across parakeet.py, parakeet_core.py, parakeet_audio.py, parakeet_cache.py, parakeet_gpu.py. Other providers are single files.\",\n  \"business_context\": \"Consistency with other providers (Deepgram, Whisper, ElevenLabs). Reduces abstractions.\",\n  \"technical_requirements\": [\n    \"Merge all parakeet_*.py files into single parakeet.py\",\n    \"Use shared cache system instead of provider-specific\",\n    \"Maintain all GPU optimization features\",\n    \"Maintain all audio preprocessing\",\n    \"Update imports in transcription service\",\n    \"Run Parakeet provider tests\"\n  ],\n  \"success_criteria\": [\n    \"Single src/providers/parakeet.py file\",\n    \"All Parakeet functionality preserved\",\n    \"Tests pass\",\n    \"~80 LOC reduction from abstraction removal\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "5465d960-3cc3-4875-a56e-2eb48a23caa9",
-    "source_type": "test_coverage",
-    "priority": 4,
+    "work_item_id": "58d05759-d829-42da-b9d5-f35329101e1e",
+    "source_type": "cli",
+    "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "test_analysis": {
-        "work_type": "test_complex_function",
-        "details": {
-          "file_path": "/home/enzo/audio-extraction-analysis/src/config.py",
-          "function_name": "validate",
-          "complexity": 9,
-          "line_count": 37,
-          "line_number": 256
-        },
-        "discovered_at": "2025-10-26T17:01:21.772325",
-        "source_type": "test_coverage"
-      }
+      "added_via": "sugar_cli",
+      "timestamp": "2025-10-26T16:45:02.862743",
+      "parsed_description": {
+        "priority": 4,
+        "type": "refactor",
+        "context": "Merge 5 Parakeet files into single parakeet.py (~420 LOC). Currently split across parakeet.py, parakeet_core.py, parakeet_audio.py, parakeet_cache.py, parakeet_gpu.py. Other providers are single files.",
+        "business_context": "Consistency with other providers (Deepgram, Whisper, ElevenLabs). Reduces abstractions.",
+        "technical_requirements": [
+          "Merge all parakeet_*.py files into single parakeet.py",
+          "Use shared cache system instead of provider-specific",
+          "Maintain all GPU optimization features",
+          "Maintain all audio preprocessing",
+          "Update imports in transcription service",
+          "Run Parakeet provider tests"
+        ],
+        "success_criteria": [
+          "Single src/providers/parakeet.py file",
+          "All Parakeet functionality preserved",
+          "Tests pass",
+          "~80 LOC reduction from abstraction removal"
+        ]
+      },
+      "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:01:21.806797",
+  "timestamp": "2025-10-26T17:02:39.222849",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
