@@ -1,3 +1,15 @@
+"""Unit tests for path utility functions.
+
+This module tests critical path manipulation and validation utilities that ensure
+secure file operations and prevent path traversal attacks:
+
+- sanitize_dirname: Removes or replaces unsafe characters from directory names
+- ensure_subpath: Validates that paths remain within a designated root directory
+  (prevents directory traversal attacks)
+- safe_write_json: Safely writes JSON data with automatic directory creation
+
+These utilities are fundamental for secure file handling throughout the application.
+"""
 import builtins
 import json
 import os
@@ -9,30 +21,62 @@ from src.utils.paths import ensure_subpath, safe_write_json, sanitize_dirname
 
 
 class TestSanitizeDirname:
-    """Tests for sanitize_dirname (re-exported from PathSanitizer)."""
+    """Tests for sanitize_dirname function.
+
+    The sanitize_dirname function removes or replaces characters that are
+    unsafe for directory names across different operating systems, including
+    path separators, wildcards, and special filesystem characters.
+
+    Re-exported from PathSanitizer utility class.
+    """
 
     def test_sanitize_dirname_replaces_unsafe(self):
-        """Test that unsafe characters are replaced in directory names."""
+        """Test that unsafe characters are replaced in directory names.
+
+        Verifies removal of:
+        - Path separators: / and \
+        - Path traversal: ..
+        - Special characters: : * ? < > |
+        """
         name = "../weird name/with\\seps:*?<>|"
         s = sanitize_dirname(name)
-        assert s  # non-empty
+        assert s  # Result should be non-empty
         assert "/" not in s and "\\" not in s
         for ch in [":", "*", "?", "<", ">", "|"]:
             assert ch not in s
 
 
 class TestEnsureSubpath:
-    """Tests for ensure_subpath function."""
+    """Tests for ensure_subpath security function.
+
+    The ensure_subpath function is a critical security utility that validates
+    paths stay within a designated root directory. It resolves symbolic links
+    and normalizes paths to prevent directory traversal attacks (e.g., ../../../etc/passwd).
+
+    This function is essential for:
+    - Preventing unauthorized file access
+    - Validating user-provided paths
+    - Securing file upload/download operations
+    - Protecting against path traversal vulnerabilities
+    """
 
     def test_ensure_subpath_within_root(self, tmp_path: Path):
-        """Test that valid subpath stays within root."""
+        """Test that valid subpath stays within root directory.
+
+        Verifies that legitimate child paths are accepted and resolved
+        to absolute paths within the root.
+        """
         root = tmp_path / "root"
         root.mkdir()
         safe = ensure_subpath(root, Path("child"))
         assert str(safe).startswith(str(root.resolve()))
 
     def test_ensure_subpath_rejects_escape(self, tmp_path: Path):
-        """Test that path traversal attempts are rejected."""
+        """Test that path traversal attempts are rejected.
+
+        This is the core security test - ensures that attempts to escape
+        the root directory using ".." are detected and rejected.
+        """
         root = tmp_path / "root"
         root.mkdir()
         with pytest.raises(ValueError, match="Path escapes root"):
@@ -64,7 +108,11 @@ class TestEnsureSubpath:
             ensure_subpath(root, outside)
 
     def test_ensure_subpath_nested_traversal(self, tmp_path: Path):
-        """Test nested path traversal attempts."""
+        """Test nested path traversal attempts.
+
+        Verifies detection of traversal attempts hidden within seemingly
+        legitimate paths (e.g., "child/../../outside" escapes via parent refs).
+        """
         root = tmp_path / "root"
         root.mkdir()
         with pytest.raises(ValueError, match="Path escapes root"):
@@ -117,7 +165,12 @@ class TestEnsureSubpath:
         assert str(safe).startswith(str(root.resolve()))
 
     def test_ensure_subpath_symlink_within_root(self, tmp_path: Path):
-        """Test symlink that stays within root."""
+        """Test symlink that stays within root.
+
+        Verifies that symbolic links pointing to locations within the root
+        are accepted after resolution. This tests the symlink resolution
+        security mechanism.
+        """
         root = tmp_path / "root"
         root.mkdir()
         target = root / "target"
@@ -125,12 +178,17 @@ class TestEnsureSubpath:
         link = root / "link"
         link.symlink_to(target)
 
-        # Resolving the link should keep it within root
+        # Resolving the symlink should keep it within root
         safe = ensure_subpath(root, "link")
         assert str(safe).startswith(str(root.resolve()))
 
     def test_ensure_subpath_symlink_escape_attempt(self, tmp_path: Path):
-        """Test symlink that tries to escape root."""
+        """Test symlink that tries to escape root.
+
+        Critical security test: ensures that symbolic links cannot be used
+        to bypass directory restrictions by pointing outside the root.
+        The function must resolve symlinks before validation.
+        """
         root = tmp_path / "root"
         root.mkdir()
         outside = tmp_path / "outside"
@@ -138,7 +196,7 @@ class TestEnsureSubpath:
         link = root / "link"
         link.symlink_to(outside)
 
-        # Symlink to outside should be rejected after resolution
+        # Symlink pointing outside root should be rejected after resolution
         with pytest.raises(ValueError, match="Path escapes root"):
             ensure_subpath(root, "link")
 
@@ -151,7 +209,16 @@ class TestEnsureSubpath:
 
 
 class TestSafeWriteJson:
-    """Tests for safe_write_json function."""
+    """Tests for safe_write_json file writing utility.
+
+    The safe_write_json function provides robust JSON file writing with:
+    - Automatic parent directory creation (no need to pre-create dirs)
+    - Configurable encoding support (default UTF-8)
+    - Customizable indentation for readability
+    - Proper error propagation for debugging
+
+    This utility simplifies JSON persistence throughout the application.
+    """
 
     def test_safe_write_json_success(self, tmp_path: Path):
         """Test successful JSON write with nested directory creation."""
@@ -163,7 +230,11 @@ class TestSafeWriteJson:
         assert data == payload
 
     def test_safe_write_json_raises_oserror(self, monkeypatch, tmp_path: Path):
-        """Test that OSError is propagated to caller."""
+        """Test that OSError is propagated to caller.
+
+        Verifies that filesystem errors (disk full, I/O errors) are not
+        silently caught but properly propagated for error handling.
+        """
         out = tmp_path / "boom.json"
 
         def boom(*args, **kwargs):
@@ -184,13 +255,17 @@ class TestSafeWriteJson:
         assert data == payload
 
     def test_safe_write_json_custom_indent(self, tmp_path: Path):
-        """Test writing JSON with custom indentation."""
+        """Test writing JSON with custom indentation.
+
+        Verifies that the indent parameter controls output formatting,
+        useful for creating human-readable configuration or data files.
+        """
         out = tmp_path / "indented.json"
         payload = {"a": 1, "b": {"c": 2}}
         safe_write_json(out, payload, indent=4)
 
         content = out.read_text(encoding="utf-8")
-        # Check that indentation is present
+        # Verify 4-space indentation is present
         assert "    " in content  # 4 spaces
         data = json.loads(content)
         assert data == payload
@@ -246,7 +321,11 @@ class TestSafeWriteJson:
         assert data["emoji"] == "🚀"
 
     def test_safe_write_json_overwrites_existing(self, tmp_path: Path):
-        """Test that existing file is overwritten."""
+        """Test that existing file is completely overwritten.
+
+        Ensures that writing to an existing file replaces the entire content
+        rather than appending or merging, preventing data corruption.
+        """
         out = tmp_path / "existing.json"
 
         # Write initial content
@@ -254,7 +333,7 @@ class TestSafeWriteJson:
         old_data = json.loads(out.read_text(encoding="utf-8"))
         assert old_data == {"old": "data"}
 
-        # Overwrite with new content
+        # Overwrite with new content - old data should be gone
         safe_write_json(out, {"new": "data"})
         new_data = json.loads(out.read_text(encoding="utf-8"))
         assert new_data == {"new": "data"}
@@ -318,7 +397,11 @@ class TestSafeWriteJson:
         assert "\n" in data["newlines"]
 
     def test_safe_write_json_permission_error(self, monkeypatch, tmp_path: Path):
-        """Test that PermissionError is propagated."""
+        """Test that PermissionError is propagated.
+
+        Verifies that permission errors are not silently caught, allowing
+        callers to handle access control issues appropriately.
+        """
         out = tmp_path / "noperm.json"
 
         def raise_permission_error(*args, **kwargs):
@@ -342,9 +425,13 @@ class TestSafeWriteJson:
         assert data == payload
 
     def test_safe_write_json_large_data(self, tmp_path: Path):
-        """Test writing large JSON data structure."""
+        """Test writing large JSON data structure.
+
+        Verifies that the function handles larger datasets without issues,
+        ensuring scalability for real-world use cases.
+        """
         out = tmp_path / "large.json"
-        # Create a large structure
+        # Create a moderately large nested structure
         payload = {f"key_{i}": {"nested": {"data": [j for j in range(10)]}} for i in range(100)}
 
         safe_write_json(out, payload)

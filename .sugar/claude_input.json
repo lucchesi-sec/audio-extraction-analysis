@@ -1,12 +1,12 @@
 {
-  "task_type": "documentation",
-  "title": "Review and improve documentation in test_paths_utils.py",
-  "description": "Review the documentation and comments in ./tests/unit/test_paths_utils.py and improve clarity, completeness, and accuracy.",
+  "task_type": "refactor",
+  "title": "Code review and optimization for test_cli.py",
+  "description": "Review ./tests/unit/test_cli.py for potential improvements: code clarity, performance, error handling, and best practices.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "206aefba-3697-477c-a26b-fca6b71f8c42",
+    "work_item_id": "5662af63-4a2b-4a68-b4e3-a1e1df3078a7",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "documentation",
-      "discovered_at": "2025-10-26T19:33:31.468089",
+      "task_type": "refactor",
+      "discovered_at": "2025-10-26T19:40:04.046592",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T20:08:28.693042",
+  "timestamp": "2025-10-26T20:09:47.125418",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
