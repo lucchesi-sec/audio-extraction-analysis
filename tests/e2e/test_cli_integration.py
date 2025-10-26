@@ -17,50 +17,78 @@ from .test_data_manager import TestDataManager
 
 
 class TestCLIExtractCommand(E2ETestBase, CLITestMixin):
-    """Test cases for the extract command."""
-    
+    """
+    Test cases for the extract command.
+
+    This test class validates the audio extraction functionality of the CLI,
+    including different quality presets, error handling, and edge cases.
+    Tests verify that audio can be successfully extracted from video files
+    and saved with the correct quality settings.
+    """
+
     @classmethod
     def setup_class(cls):
-        """Setup test data for the class."""
+        """
+        Setup test data for the class.
+
+        Initializes TestDataManager and generates all required test files
+        (short, medium, audio_only, and edge case files) for extraction testing.
+        """
         cls.test_data_manager = TestDataManager()
         cls.test_files = cls.test_data_manager.generate_all_test_files()
     
     def test_extract_high_quality(self):
-        """Test audio extraction with high quality preset."""
+        """
+        Test audio extraction with high quality preset.
+
+        Verifies that:
+        - Extract command completes successfully with 'high' quality preset
+        - Output file is created at the specified location
+        - Output file contains data (non-zero size)
+        """
         if "short" not in self.test_files:
             pytest.skip("Short test file not available")
-        
+
         input_file = self.test_files["short"]
         output_file = self.output_dir / "extracted_high.mp3"
-        
+
         result = self.run_extract_command(
             input_file=input_file,
             quality="high",
             output_file=output_file
         )
-        
+
+        # Verify successful extraction
         assert result.success, f"Extract command failed: {result.error}"
         assert output_file.exists(), "Output file was not created"
         assert output_file.stat().st_size > 0, "Output file is empty"
     
     def test_extract_speech_quality(self):
-        """Test audio extraction with speech quality preset."""
+        """
+        Test audio extraction with speech quality preset.
+
+        Verifies that:
+        - Extract command completes successfully with 'speech' quality preset
+        - Output file is created
+        - Speech quality produces smaller or equal file size compared to high quality
+          (speech is optimized for voice, not music, resulting in better compression)
+        """
         if "short" not in self.test_files:
             pytest.skip("Short test file not available")
-        
+
         input_file = self.test_files["short"]
         output_file = self.output_dir / "extracted_speech.mp3"
-        
+
         result = self.run_extract_command(
             input_file=input_file,
             quality="speech",
             output_file=output_file
         )
-        
+
         assert result.success, f"Extract command failed: {result.error}"
         assert output_file.exists(), "Output file was not created"
-        
-        # Speech quality should produce smaller files
+
+        # Verify speech quality produces smaller files due to voice-optimized encoding
         high_quality_file = self.output_dir / "extracted_high.mp3"
         if high_quality_file.exists():
             assert output_file.stat().st_size <= high_quality_file.stat().st_size
@@ -83,11 +111,18 @@ class TestCLIExtractCommand(E2ETestBase, CLITestMixin):
         assert output_file.exists(), "Output file was not created"
     
     def test_extract_nonexistent_file(self):
-        """Test extract command with nonexistent input file."""
+        """
+        Test extract command with nonexistent input file.
+
+        Verifies that:
+        - Extract command fails gracefully when input file doesn't exist
+        - Error message clearly indicates the file was not found
+        """
         nonexistent_file = self.temp_dir / "nonexistent.mp4"
-        
+
         result = self.run_extract_command(input_file=nonexistent_file)
-        
+
+        # Verify failure with clear error message
         assert not result.success, "Extract should fail with nonexistent file"
         assert "not found" in result.error.lower() or "no such file" in result.error.lower()
     
@@ -125,22 +160,28 @@ class TestCLIExtractCommand(E2ETestBase, CLITestMixin):
         assert output_file.exists(), "Output file was not created"
     
     def test_extract_overwrite_protection(self):
-        """Test extract command behavior when output file already exists."""
+        """
+        Test extract command behavior when output file already exists.
+
+        Verifies that the CLI handles existing output files appropriately by either:
+        - Successfully overwriting the file, or
+        - Failing with a clear error message about file existence
+        """
         if "short" not in self.test_files:
             pytest.skip("Short test file not available")
-        
+
         input_file = self.test_files["short"]
         output_file = self.output_dir / "existing.mp3"
-        
-        # Create existing file
+
+        # Pre-create the output file to test overwrite behavior
         output_file.write_text("existing content")
-        
+
         result = self.run_extract_command(
             input_file=input_file,
             output_file=output_file
         )
-        
-        # Should either succeed (overwrite) or fail with clear message
+
+        # Verify appropriate handling: either succeeds (overwrites) or fails with clear message
         if not result.success:
             assert "exists" in result.error.lower() or "overwrite" in result.error.lower()
 

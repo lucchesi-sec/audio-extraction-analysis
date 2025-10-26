@@ -1,12 +1,12 @@
 {
-  "task_type": "refactor",
-  "title": "Code review and optimization for test_deepgram_provider.py",
-  "description": "Review ./tests/unit/test_deepgram_provider.py for potential improvements: code clarity, performance, error handling, and best practices.",
+  "task_type": "documentation",
+  "title": "Review and improve documentation in test_cli_integration.py",
+  "description": "Review the documentation and comments in ./tests/e2e/test_cli_integration.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "15983e61-2668-4bfd-8e71-db4c6fd4129a",
+    "work_item_id": "805464f5-6a13-4cac-9bd8-b63e46323220",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "refactor",
-      "discovered_at": "2025-10-26T18:22:21.290641",
+      "task_type": "documentation",
+      "discovered_at": "2025-10-26T18:22:21.290662",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:42:33.001688",
+  "timestamp": "2025-10-26T19:44:19.354178",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
