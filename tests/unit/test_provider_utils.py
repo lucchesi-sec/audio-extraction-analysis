@@ -270,6 +270,66 @@ class TestProviderAvailabilityCheckerCheckImport:
                 for record in caplog.records
             )
 
+    def test_check_import_successful_with_class(self) -> None:
+        """Test successful import when class exists in module."""
+        # Create a mock module with a class that matches the module name
+        with patch("importlib.import_module") as mock_import:
+            mock_module = Mock()
+            # Create a mock class that should be returned
+            mock_class = Mock()
+            # Set the class as an attribute on the module
+            mock_module.RetryConfig = mock_class
+            mock_import.return_value = mock_module
+
+            is_available, imported_class = ProviderAvailabilityChecker.check_import(
+                "src.utils.retry.RetryConfig",
+                "retry-package",
+                "test_provider"
+            )
+
+            assert is_available is True
+            assert imported_class is mock_class
+
+    def test_check_import_multi_part_module_name(self) -> None:
+        """Test class name extraction from multi-part module path."""
+        with patch("importlib.import_module") as mock_import:
+            mock_module = Mock()
+            mock_class = Mock()
+            # For module "a.b.c.ClassName", it should extract "ClassName"
+            mock_module.ClassName = mock_class
+            mock_import.return_value = mock_module
+
+            is_available, imported_class = ProviderAvailabilityChecker.check_import(
+                "package.subpackage.module.ClassName",
+                "package-name",
+                "test_provider"
+            )
+
+            assert is_available is True
+            assert imported_class is mock_class
+            # Verify the correct module was imported
+            mock_import.assert_called_once_with("package.subpackage.module.ClassName")
+
+    def test_check_import_returns_none_when_class_attribute_missing(self) -> None:
+        """Test that None is returned when module lacks expected class attribute."""
+        with patch("importlib.import_module") as mock_import:
+            mock_module = Mock()
+            # Module exists but doesn't have the expected class
+            mock_module.SomeClass = Mock()  # Different class
+            delattr(mock_module, "ExpectedClass") if hasattr(mock_module, "ExpectedClass") else None
+            mock_import.return_value = mock_module
+
+            # Try to import "some.module.ExpectedClass"
+            is_available, imported_class = ProviderAvailabilityChecker.check_import(
+                "some.module.ExpectedClass",
+                "some-package",
+                "test_provider"
+            )
+
+            # Module import succeeds, but class extraction returns None
+            assert is_available is True
+            assert imported_class is None
+
 
 class TestProviderAvailabilityCheckerEnsureAvailable:
     """Test suite for ProviderAvailabilityChecker.ensure_available()."""
@@ -467,3 +527,115 @@ class TestInitializeProviderWithDefaults:
         assert "third_param" in call_kwargs
         assert "retry_config" in call_kwargs
         assert "circuit_config" in call_kwargs
+
+    def test_initialize_provider_with_defaults_propagates_initialization_error(
+        self,
+    ) -> None:
+        """Test that exceptions during provider initialization are propagated."""
+        mock_provider_class = Mock()
+        mock_provider_class.side_effect = ValueError("Invalid configuration")
+
+        with pytest.raises(ValueError) as exc_info:
+            initialize_provider_with_defaults(
+                mock_provider_class, "test_provider"
+            )
+
+        assert "Invalid configuration" in str(exc_info.value)
+
+    def test_initialize_provider_with_defaults_with_empty_kwargs(self) -> None:
+        """Test that empty kwargs dict doesn't cause issues."""
+        mock_provider_class = Mock()
+        mock_instance = MagicMock()
+        mock_provider_class.return_value = mock_instance
+
+        # Explicitly pass empty kwargs
+        result = initialize_provider_with_defaults(
+            mock_provider_class, "test_provider", **{}
+        )
+
+        assert result is mock_instance
+        call_kwargs = mock_provider_class.call_args[1]
+        # Should still have retry_config and circuit_config
+        assert "retry_config" in call_kwargs
+        assert "circuit_config" in call_kwargs
+
+
+class TestProviderUtilsIntegration:
+    """Integration tests for provider utilities workflows."""
+
+    def test_check_import_and_ensure_available_success_flow(self) -> None:
+        """Test successful flow from check_import to ensure_available."""
+        # Simulate successful import
+        is_available, imported_class = ProviderAvailabilityChecker.check_import(
+            "json", "json", "test_provider"
+        )
+
+        # Should not raise when available
+        ProviderAvailabilityChecker.ensure_available(is_available, "test_provider")
+        assert is_available is True
+
+    def test_check_import_and_ensure_available_failure_flow(self) -> None:
+        """Test failure flow from check_import to ensure_available."""
+        # Simulate failed import
+        is_available, imported_class = ProviderAvailabilityChecker.check_import(
+            "nonexistent.fake.module", "fake-package", "test_provider"
+        )
+
+        # Should raise when not available
+        with pytest.raises(ImportError) as exc_info:
+            ProviderAvailabilityChecker.ensure_available(is_available, "test_provider")
+
+        assert is_available is False
+        assert imported_class is None
+        assert "test_provider is not available" in str(exc_info.value)
+
+    def test_full_provider_initialization_workflow(self) -> None:
+        """Test complete workflow: check import, ensure available, initialize."""
+        # Step 1: Check if dependencies are available (using real module)
+        is_available, _ = ProviderAvailabilityChecker.check_import(
+            "json", "json", "test_provider"
+        )
+
+        # Step 2: Ensure available
+        ProviderAvailabilityChecker.ensure_available(is_available, "test_provider")
+
+        # Step 3: Initialize provider with defaults
+        mock_provider_class = Mock()
+        mock_instance = MagicMock()
+        mock_provider_class.return_value = mock_instance
+
+        result = initialize_provider_with_defaults(
+            mock_provider_class,
+            "test_provider",
+            api_key="test-key",
+        )
+
+        assert result is mock_instance
+        assert is_available is True
+
+    def test_custom_configs_flow_through_initialization(self) -> None:
+        """Test that custom configs flow correctly through initialization."""
+        custom_retry = RetryConfig(max_attempts=8, base_delay=5.0)
+        custom_circuit = CircuitBreakerConfig(
+            failure_threshold=20, recovery_timeout=180.0
+        )
+
+        mock_provider_class = Mock()
+        mock_instance = MagicMock()
+        mock_provider_class.return_value = mock_instance
+
+        result = initialize_provider_with_defaults(
+            mock_provider_class,
+            "test_provider",
+            retry_config=custom_retry,
+            circuit_config=custom_circuit,
+        )
+
+        assert result is mock_instance
+        call_kwargs = mock_provider_class.call_args[1]
+
+        # Verify custom configs were passed through
+        assert call_kwargs["retry_config"] is custom_retry
+        assert call_kwargs["circuit_config"] is custom_circuit
+        assert call_kwargs["retry_config"].max_attempts == 8
+        assert call_kwargs["circuit_config"].failure_threshold == 20

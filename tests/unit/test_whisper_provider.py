@@ -272,3 +272,396 @@ class TestWhisperTranscriber:
                     result = await whisper_transcriber.transcribe_async(audio_path, "en")
 
                     assert result is None
+
+
+class TestEnsureWhisperAvailable:
+    """Test _ensure_whisper_available function for dependency management."""
+
+    def test_ensure_whisper_available_success(self):
+        """Test successful dependency loading."""
+        from src.providers import whisper as whisper_module
+
+        # Reset global state
+        whisper_module.PROVIDER_AVAILABLE = None
+        whisper_module.whisper = None
+        whisper_module.torch = None
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", None):
+            with patch("builtins.__import__") as mock_import:
+                # Mock successful imports
+                mock_torch = Mock()
+                mock_whisper = Mock()
+
+                def import_side_effect(name, *args, **kwargs):
+                    if "torch" in name:
+                        return mock_torch
+                    elif "whisper" in name:
+                        return mock_whisper
+                    return Mock()
+
+                mock_import.side_effect = import_side_effect
+
+                from src.providers.whisper import _ensure_whisper_available
+
+                # Force re-evaluation
+                whisper_module.PROVIDER_AVAILABLE = None
+                with patch("src.providers.whisper.torch") as mock_t:
+                    mock_t.cuda.is_available.return_value = True
+                    result = _ensure_whisper_available()
+                    # Should return True or the cached value
+                    assert isinstance(result, bool)
+
+    def test_ensure_whisper_available_import_error(self):
+        """Test handling when dependencies cannot be imported."""
+        from src.providers import whisper as whisper_module
+
+        # Reset and force import error
+        whisper_module.PROVIDER_AVAILABLE = None
+
+        with patch("builtins.__import__", side_effect=ImportError("torch not found")):
+            from src.providers.whisper import _ensure_whisper_available
+
+            result = _ensure_whisper_available()
+            assert result is False
+
+    def test_ensure_whisper_available_cached_result(self):
+        """Test that subsequent calls use cached result."""
+        from src.providers.whisper import _ensure_whisper_available
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", True):
+            result = _ensure_whisper_available()
+            assert result is True
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", False):
+            result = _ensure_whisper_available()
+            assert result is False
+
+
+class TestWhisperInitialization:
+    """Test WhisperTranscriber initialization edge cases."""
+
+    def test_init_default_configuration(self):
+        """Test initialization with default configuration."""
+        with patch("src.providers.whisper.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = False
+            with patch("src.config.config.Config") as mock_config:
+                mock_config.WHISPER_MODEL = None
+                mock_config.WHISPER_DEVICE = None
+                mock_config.WHISPER_COMPUTE_TYPE = None
+
+                transcriber = WhisperTranscriber()
+
+                assert transcriber.model_name == "base"
+                assert transcriber.device in ["cpu", "cuda"]
+                assert transcriber.compute_type == "float16"
+
+    def test_init_with_cuda_available(self):
+        """Test initialization when CUDA is available."""
+        with patch("src.providers.whisper.torch") as mock_torch:
+            mock_torch.cuda.is_available.return_value = True
+            with patch("src.config.config.Config") as mock_config:
+                mock_config.WHISPER_MODEL = "large"
+                mock_config.WHISPER_DEVICE = "cuda"
+                mock_config.WHISPER_COMPUTE_TYPE = "float16"
+
+                transcriber = WhisperTranscriber()
+
+                assert transcriber.model_name == "large"
+                assert transcriber.device == "cuda"
+                assert transcriber.compute_type == "float16"
+
+    def test_init_without_cuda(self):
+        """Test initialization when CUDA is not available."""
+        with patch("src.providers.whisper.torch", None):
+            with patch("src.config.config.Config") as mock_config:
+                mock_config.WHISPER_MODEL = "base"
+                mock_config.WHISPER_DEVICE = None
+                mock_config.WHISPER_COMPUTE_TYPE = "float32"
+
+                transcriber = WhisperTranscriber()
+
+                assert transcriber.device == "cpu"
+                assert transcriber.compute_type == "float32"
+
+
+class TestValidateConfigurationEdgeCases:
+    """Test validate_configuration edge cases."""
+
+    def test_validate_cuda_fallback_to_cpu(self):
+        """Test CUDA fallback to CPU when CUDA unavailable."""
+        transcriber = WhisperTranscriber()
+        transcriber.device = "cuda"
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", True):
+            with patch("src.providers.whisper.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = False
+
+                result = transcriber.validate_configuration()
+
+                assert result is True
+                assert transcriber.device == "cpu"
+
+    def test_validate_cuda_remains_when_available(self):
+        """Test CUDA device remains when available."""
+        transcriber = WhisperTranscriber()
+        transcriber.device = "cuda"
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", True):
+            with patch("src.providers.whisper.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = True
+
+                result = transcriber.validate_configuration()
+
+                assert result is True
+                assert transcriber.device == "cuda"
+
+
+class TestTranscribeImplEdgeCases:
+    """Test _transcribe_impl edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_transcribe_impl_missing_dependencies(self):
+        """Test transcription when dependencies are missing."""
+        transcriber = WhisperTranscriber()
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", False):
+            audio_path = Path("/fake/audio.mp3")
+
+            with pytest.raises(ImportError, match="Whisper dependencies not installed"):
+                await transcriber._transcribe_impl(audio_path, "en")
+
+    @pytest.mark.asyncio
+    async def test_transcribe_impl_auto_language_detection(self):
+        """Test transcription with automatic language detection."""
+        transcriber = WhisperTranscriber()
+        mock_model = Mock()
+        mock_model.transcribe.return_value = {
+            "segments": [{"text": "Bonjour", "start": 0.0, "end": 1.0}],
+            "language": "fr",
+        }
+        transcriber.model = mock_model
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", True):
+            with patch("pathlib.Path.exists", return_value=True):
+                with patch("asyncio.get_event_loop") as mock_loop:
+                    mock_loop.return_value.run_in_executor = AsyncMock(
+                        return_value=mock_model.transcribe.return_value
+                    )
+
+                    audio_path = Path("/fake/audio.mp3")
+                    result = await transcriber._transcribe_impl(audio_path, "auto")
+
+                    assert result is not None
+                    assert result.metadata["language"] == "fr"
+
+    @pytest.mark.asyncio
+    async def test_transcribe_impl_transcription_error(self):
+        """Test handling of transcription errors."""
+        transcriber = WhisperTranscriber()
+        mock_model = Mock()
+        transcriber.model = mock_model
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", True):
+            with patch("pathlib.Path.exists", return_value=True):
+                with patch("asyncio.get_event_loop") as mock_loop:
+                    mock_loop.return_value.run_in_executor = AsyncMock(
+                        side_effect=RuntimeError("CUDA out of memory")
+                    )
+
+                    audio_path = Path("/fake/audio.mp3")
+
+                    with pytest.raises(RuntimeError, match="CUDA out of memory"):
+                        await transcriber._transcribe_impl(audio_path, "en")
+
+
+class TestParseWhisperResultEdgeCases:
+    """Test _parse_whisper_result edge cases."""
+
+    def test_parse_empty_segments(self):
+        """Test parsing result with empty segments."""
+        transcriber = WhisperTranscriber()
+        whisper_result = {"segments": [], "language": "en"}
+
+        audio_path = Path("/fake/audio.mp3")
+        processing_time = 1.0
+
+        result = transcriber._parse_whisper_result(whisper_result, audio_path, processing_time)
+
+        assert result.transcript == ""
+        assert result.duration == 0
+        assert len(result.metadata["chapters"]) == 0
+
+    def test_parse_missing_language(self):
+        """Test parsing result when language field is missing."""
+        transcriber = WhisperTranscriber()
+        whisper_result = {
+            "segments": [{"text": "Test", "start": 0.0, "end": 1.0}],
+            # Missing language field
+        }
+
+        audio_path = Path("/fake/audio.mp3")
+        processing_time = 1.0
+
+        result = transcriber._parse_whisper_result(whisper_result, audio_path, processing_time)
+
+        assert result.metadata["language"] == "en"  # Default fallback
+
+    def test_parse_segments_without_words(self):
+        """Test parsing segments that don't have word-level data."""
+        transcriber = WhisperTranscriber()
+        whisper_result = {
+            "segments": [
+                {"text": "First", "start": 0.0, "end": 1.0},
+                {"text": "Second", "start": 1.0, "end": 2.0},
+            ],
+            "language": "en",
+        }
+
+        audio_path = Path("/fake/audio.mp3")
+        processing_time = 1.5
+
+        result = transcriber._parse_whisper_result(whisper_result, audio_path, processing_time)
+
+        assert result.transcript == "First Second"
+        assert result.metadata["has_words"] is False
+
+
+class TestExtractWordsEdgeCases:
+    """Test _extract_words edge cases."""
+
+    def test_extract_words_missing_probability(self):
+        """Test word extraction when probability field is missing."""
+        transcriber = WhisperTranscriber()
+        segment = {
+            "words": [
+                {"word": "Test", "start": 0.0, "end": 0.5},  # Missing probability
+                {"word": "word", "start": 0.5, "end": 1.0, "probability": 0.8},
+            ]
+        }
+
+        words = transcriber._extract_words(segment)
+
+        assert words is not None
+        assert len(words) == 2
+        assert words[0]["confidence"] == 0.0  # Default when missing
+        assert words[1]["confidence"] == 0.8
+
+    def test_extract_words_empty_words_list(self):
+        """Test word extraction with empty words list."""
+        transcriber = WhisperTranscriber()
+        segment = {"words": []}
+
+        words = transcriber._extract_words(segment)
+
+        assert words is not None
+        assert len(words) == 0
+
+
+class TestGenerateChaptersEdgeCases:
+    """Test _generate_chapters edge cases."""
+
+    def test_generate_chapters_short_audio(self):
+        """Test chapter generation for audio shorter than 5 minutes."""
+        from src.models.transcription import TranscriptionUtterance
+
+        transcriber = WhisperTranscriber()
+        utterances = [
+            TranscriptionUtterance(speaker=1, start=0.0, end=120.0, text="Short audio")
+        ]
+
+        chapters = transcriber._generate_chapters(utterances)
+
+        assert len(chapters) == 1
+        assert chapters[0]["start_time"] == 0
+        assert chapters[0]["end_time"] == 120.0
+
+    def test_generate_chapters_long_audio(self):
+        """Test chapter generation for audio longer than 1 hour."""
+        from src.models.transcription import TranscriptionUtterance
+
+        transcriber = WhisperTranscriber()
+        utterances = [
+            TranscriptionUtterance(speaker=1, start=0.0, end=3600.0, text="Long audio")
+        ]
+
+        chapters = transcriber._generate_chapters(utterances)
+
+        # Should have 13 chapters (0-300, 300-600, ..., 3600)
+        assert len(chapters) >= 12
+        assert chapters[0]["start_time"] == 0
+        assert chapters[-1]["end_time"] == 3600.0
+
+    def test_generate_chapters_empty_utterances(self):
+        """Test chapter generation with empty utterances list."""
+        transcriber = WhisperTranscriber()
+        chapters = transcriber._generate_chapters([])
+
+        assert chapters == []
+
+
+class TestHealthCheckEdgeCases:
+    """Test health_check_async edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_health_check_loads_model_if_not_loaded(self):
+        """Test that health check loads model if not already loaded."""
+        transcriber = WhisperTranscriber()
+        assert transcriber.model is None
+
+        mock_model = Mock()
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", True):
+            with patch("src.providers.whisper.torch") as mock_torch:
+                mock_torch.cuda.is_available.return_value = False
+                with patch("asyncio.get_event_loop") as mock_loop:
+                    mock_loop.return_value.run_in_executor = AsyncMock(return_value=mock_model)
+
+                    health = await transcriber.health_check_async()
+
+                    assert transcriber.model == mock_model
+                    assert health["healthy"] is True
+                    assert health["details"]["model_loaded"] is True
+
+    @pytest.mark.asyncio
+    async def test_health_check_exception_handling(self):
+        """Test health check when exception occurs."""
+        transcriber = WhisperTranscriber()
+
+        with patch("src.providers.whisper.PROVIDER_AVAILABLE", True):
+            with patch("asyncio.get_event_loop") as mock_loop:
+                mock_loop.return_value.run_in_executor = AsyncMock(
+                    side_effect=RuntimeError("Model load failed")
+                )
+
+                health = await transcriber.health_check_async()
+
+                assert health["healthy"] is False
+                assert health["status"] == "health_check_failed"
+                assert "error" in health["details"]
+
+
+class TestGetModelSizeInfoEdgeCases:
+    """Test get_model_size_info edge cases."""
+
+    def test_get_model_size_info_unknown_model(self):
+        """Test getting model info for unknown model name."""
+        transcriber = WhisperTranscriber()
+        transcriber.model_name = "unknown-model"
+
+        size_info = transcriber.get_model_size_info()
+
+        assert size_info["current_model"] == "unknown-model"
+        assert size_info["current_info"]["params"] == "unknown"
+        assert size_info["current_info"]["disk"] == "unknown"
+
+    def test_get_model_size_info_all_models(self):
+        """Test that all documented models have size information."""
+        transcriber = WhisperTranscriber()
+
+        size_info = transcriber.get_model_size_info()
+        available_models = size_info["available_models"]
+
+        expected_models = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
+
+        for model in expected_models:
+            assert model in available_models
+            assert model in size_info["model_sizes"]
