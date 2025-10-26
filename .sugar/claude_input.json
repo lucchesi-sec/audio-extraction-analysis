@@ -1,12 +1,12 @@
 {
   "task_type": "test",
-  "title": "Review test coverage for cache_benchmark.py",
-  "description": "Analyze ./benchmarks/cache_benchmark.py and ensure adequate test coverage. Add missing tests for critical functionality.",
+  "title": "Review test coverage for test_pipeline_error_handling.py",
+  "description": "Analyze ./tests/integration/test_pipeline_error_handling.py and ensure adequate test coverage. Add missing tests for critical functionality.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "61cd5aed-a8d6-4291-b4e3-d888adb71a61",
+    "work_item_id": "a955d518-b6fb-45b4-8791-cae247c97b96",
     "source_type": "maintenance_generator",
     "priority": 3,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "test",
-      "discovered_at": "2025-10-26T19:11:42.776617",
+      "discovered_at": "2025-10-26T19:11:42.776648",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:11:43.570684",
+  "timestamp": "2025-10-26T19:13:30.954271",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
