@@ -33,7 +33,7 @@ class LoggingFactory:
             cls._log_dir = log_dir
 
         # Create log directory if it doesn't exist
-        cls._log_dir.mkdir(exist_ok=True)
+        cls._log_dir.mkdir(parents=True, exist_ok=True)
 
         # Default format
         if format_string is None:

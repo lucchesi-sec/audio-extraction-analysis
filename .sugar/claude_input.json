@@ -1,26 +1,28 @@
 {
   "task_type": "test",
-  "title": "Review test coverage for test_sanitization.py",
-  "description": "Analyze ./tests/unit/test_sanitization.py and ensure adequate test coverage. Add missing tests for critical functionality.",
+  "title": "Add tests for logging_factory.py",
+  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/utils/logging_factory.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "aabc8869-fd37-4291-ad21-00d55bd29f2a",
-    "source_type": "maintenance_generator",
+    "work_item_id": "47c89fec-f32e-485c-a25c-b0857eb5d3f8",
+    "source_type": "test_coverage",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "maintenance_task": true,
-      "task_type": "test",
-      "discovered_at": "2025-10-26T18:43:17.908505",
-      "source_type": "maintenance"
+      "test_analysis": {
+        "work_type": "missing_tests",
+        "details": {},
+        "discovered_at": "2025-10-26T18:43:18.262830",
+        "source_type": "test_coverage"
+      }
     }
   },
-  "timestamp": "2025-10-26T18:45:50.816374",
+  "timestamp": "2025-10-26T18:47:21.609873",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

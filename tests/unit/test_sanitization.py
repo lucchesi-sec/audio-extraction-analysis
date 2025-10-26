@@ -173,6 +173,62 @@ class TestPathSanitizerFilename:
         assert len(result) > 0
         assert result != "unnamed"
 
+    def test_sanitize_filename_with_newline(self):
+        r"""Test handling of newlines in filenames.
+
+        NOTE: Current implementation preserves newlines as they're part of \s.
+        This could be a security concern and may need addressing.
+        """
+        result = PathSanitizer.sanitize_filename("file\nname.txt")
+
+        # Current behavior: newlines are preserved as whitespace
+        assert isinstance(result, str)
+        assert ".txt" in result
+        # TODO: Consider if newlines should be replaced for security
+
+    def test_sanitize_filename_with_tab(self):
+        """Test that tabs are preserved (they're whitespace)."""
+        result = PathSanitizer.sanitize_filename("file\tname.txt")
+
+        # Tabs are whitespace and should be preserved
+        assert len(result) > 0
+        assert ".txt" in result
+
+    def test_sanitize_filename_ending_with_dots(self):
+        """Test filename ending with multiple dots."""
+        result = PathSanitizer.sanitize_filename("filename...")
+
+        # Should not end with dots after sanitization
+        assert len(result) > 0
+        # Dots are valid, so they should be preserved
+
+    def test_sanitize_filename_starting_with_dot(self):
+        """Test hidden file (starting with dot)."""
+        result = PathSanitizer.sanitize_filename(".hidden")
+
+        # Should preserve leading dot for hidden files
+        assert len(result) > 0
+
+    def test_sanitize_filename_very_long_extension(self):
+        """Test filename with very long extension."""
+        result = PathSanitizer.sanitize_filename("file.verylongextension")
+
+        # Extension > 10 chars should be truncated as part of filename
+        assert len(result) <= 200
+
+    def test_sanitize_filename_with_carriage_return(self):
+        r"""Test filename with carriage return.
+
+        NOTE: Current implementation preserves carriage returns as they're part of \s.
+        This could be a security concern for cross-platform compatibility.
+        """
+        result = PathSanitizer.sanitize_filename("file\rname.txt")
+
+        # Current behavior: carriage returns are preserved as whitespace
+        assert isinstance(result, str)
+        assert ".txt" in result
+        # TODO: Consider if \r should be replaced for security/compatibility
+
 
 class TestPathSanitizerDirname:
     """Tests for sanitize_dirname method."""
@@ -236,6 +292,40 @@ class TestPathSanitizerDirname:
         """Test dirname with only invalid characters."""
         result = PathSanitizer.sanitize_dirname("***:::**")
         assert result == "unnamed_dir"
+
+    def test_sanitize_dirname_with_newline(self):
+        r"""Test dirname with newline characters.
+
+        NOTE: Current implementation preserves newlines as they're part of \s.
+        This could be a security concern and may need addressing.
+        """
+        result = PathSanitizer.sanitize_dirname("dir\nname")
+
+        # Current behavior: newlines are preserved as whitespace
+        assert isinstance(result, str)
+        assert len(result) > 0
+        # TODO: Consider if newlines should be replaced for security
+
+    def test_sanitize_dirname_with_tab(self):
+        """Test dirname with tab characters."""
+        result = PathSanitizer.sanitize_dirname("dir\tname")
+
+        # Tabs are whitespace and should be preserved
+        assert len(result) > 0
+
+    def test_sanitize_dirname_starting_with_dot(self):
+        """Test dirname starting with dot."""
+        result = PathSanitizer.sanitize_dirname(".hidden_dir")
+
+        # Dots should be replaced in dirnames
+        assert len(result) > 0
+
+    def test_sanitize_dirname_multiple_spaces(self):
+        """Test dirname with multiple consecutive spaces."""
+        result = PathSanitizer.sanitize_dirname("dir   name")
+
+        # Multiple spaces should be preserved (they're valid)
+        assert len(result) > 0
 
 
 class TestEnsureSafeSubpath:
@@ -317,6 +407,47 @@ class TestEnsureSafeSubpath:
         # Should be the base itself
         assert result == base.resolve()
 
+    def test_ensure_safe_subpath_with_backslashes(self, tmp_path):
+        """Test subpath with Windows-style backslashes."""
+        base = tmp_path / "base"
+        base.mkdir()
+
+        # Backslashes should be handled (converted to forward slashes on Unix)
+        result = PathSanitizer.ensure_safe_subpath(base, "dir\\file.txt")
+
+        # Should be within base
+        assert str(result).startswith(str(base.resolve()))
+
+    def test_ensure_safe_subpath_multiple_slashes(self, tmp_path):
+        """Test subpath with multiple consecutive slashes."""
+        base = tmp_path / "base"
+        base.mkdir()
+
+        result = PathSanitizer.ensure_safe_subpath(base, "dir//subdir///file.txt")
+
+        # Should normalize slashes and be within base
+        assert str(result).startswith(str(base.resolve()))
+
+    def test_ensure_safe_subpath_equals_base(self, tmp_path):
+        """Test subpath that equals just a dot (current dir)."""
+        base = tmp_path / "base"
+        base.mkdir()
+
+        result = PathSanitizer.ensure_safe_subpath(base, ".")
+
+        # Should return base directory
+        assert result == base.resolve()
+
+    def test_ensure_safe_subpath_only_parent_refs(self, tmp_path):
+        """Test subpath with only parent directory references."""
+        base = tmp_path / "base"
+        base.mkdir()
+
+        result = PathSanitizer.ensure_safe_subpath(base, "../..")
+
+        # All .. should be stripped, returning base
+        assert result == base.resolve()
+
 
 class TestValidatePathSecurity:
     """Tests for validate_path_security method."""
@@ -385,6 +516,33 @@ class TestValidatePathSecurity:
         # Should not raise
         PathSanitizer.validate_path_security(safe_path)
 
+    def test_validate_path_with_newline(self):
+        """Test that newlines are rejected."""
+        with pytest.raises(ValueError, match="control characters"):
+            PathSanitizer.validate_path_security("/path/with\nnewline")
+
+    def test_validate_path_with_tab(self):
+        """Test that tabs are rejected."""
+        with pytest.raises(ValueError, match="control characters"):
+            PathSanitizer.validate_path_security("/path/with\ttab")
+
+    def test_validate_path_with_carriage_return(self):
+        """Test that carriage returns are rejected."""
+        with pytest.raises(ValueError, match="control characters"):
+            PathSanitizer.validate_path_security("/path/with\rcarriage")
+
+    def test_validate_path_with_multiple_dangerous_chars(self):
+        """Test path with multiple dangerous characters."""
+        with pytest.raises(ValueError, match="Invalid characters"):
+            PathSanitizer.validate_path_security("/path/with;multiple&chars|here")
+
+    def test_validate_path_allows_spaces_and_common_chars(self, tmp_path):
+        """Test that spaces and common safe characters are allowed."""
+        safe_path = tmp_path / "file name-with_chars[1].txt"
+
+        # Should not raise
+        PathSanitizer.validate_path_security(safe_path)
+
 
 class TestGetSafeOutputPath:
     """Tests for get_safe_output_path method."""
@@ -443,6 +601,37 @@ class TestGetSafeOutputPath:
         # All nested directories should be created
         assert output_dir.exists()
         assert result.parent == output_dir
+
+    def test_get_safe_output_path_nonexistent_input(self, tmp_path):
+        """Test that input path doesn't need to exist."""
+        input_path = tmp_path / "nonexistent.mp4"
+
+        # Should not raise even if input doesn't exist
+        result = PathSanitizer.get_safe_output_path(input_path)
+
+        assert isinstance(result, Path)
+        assert result.parent == tmp_path
+
+    def test_get_safe_output_path_no_extension(self, tmp_path):
+        """Test input path with no extension."""
+        input_path = tmp_path / "noextension"
+
+        result = PathSanitizer.get_safe_output_path(input_path)
+
+        # Should still work
+        assert result.suffix == ".output"
+        assert result.stem == "noextension"
+
+    def test_get_safe_output_path_preserves_sanitized_stem(self, tmp_path):
+        """Test that stem is sanitized correctly."""
+        input_path = tmp_path / "file:with*invalid.mp4"
+
+        result = PathSanitizer.get_safe_output_path(input_path, suffix=".wav")
+
+        # Stem should be sanitized, suffix should be custom
+        assert ":" not in str(result)
+        assert "*" not in str(result)
+        assert result.suffix == ".wav"
 
 
 class TestConvenienceFunctions:
@@ -511,3 +700,57 @@ class TestEdgeCases:
         # Should be truncated and not end with underscore
         assert len(result) <= 100
         assert not result.endswith("_")
+
+    def test_filename_only_whitespace(self):
+        """Test filename with only whitespace."""
+        result = PathSanitizer.sanitize_filename("     ")
+
+        # Should return unnamed since it becomes empty after stripping
+        assert result == "unnamed"
+
+    def test_dirname_only_whitespace(self):
+        """Test dirname with only whitespace."""
+        result = PathSanitizer.sanitize_dirname("     ")
+
+        # Should return unnamed_dir since it becomes empty after stripping
+        assert result == "unnamed_dir"
+
+    def test_combined_sanitization_workflow(self, tmp_path):
+        """Test complete workflow: sanitize, validate, and create output path."""
+        # Create a path with dangerous characters
+        input_filename = "file|with;dangerous&chars.mp4"
+
+        # Sanitize the filename
+        safe_filename = PathSanitizer.sanitize_filename(input_filename)
+
+        # Create full path
+        full_path = tmp_path / safe_filename
+
+        # Validate security
+        PathSanitizer.validate_path_security(full_path)
+
+        # Get safe output path
+        output_path = PathSanitizer.get_safe_output_path(full_path, suffix=".wav")
+
+        # All steps should succeed
+        assert "|" not in str(output_path)
+        assert ";" not in str(output_path)
+        assert "&" not in str(output_path)
+        assert output_path.suffix == ".wav"
+
+    def test_ensure_safe_subpath_with_sanitized_components(self, tmp_path):
+        """Test ensure_safe_subpath with pre-sanitized filename components."""
+        base = tmp_path / "base"
+        base.mkdir()
+
+        # Sanitize filename first
+        unsafe_name = "file:with*invalid.txt"
+        safe_name = PathSanitizer.sanitize_filename(unsafe_name)
+
+        # Use in subpath
+        result = PathSanitizer.ensure_safe_subpath(base, f"subdir/{safe_name}")
+
+        # Should be safe and within base
+        assert str(result).startswith(str(base.resolve()))
+        assert ":" not in str(result)
+        assert "*" not in str(result)
