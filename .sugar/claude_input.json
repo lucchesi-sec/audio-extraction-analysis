@@ -1,32 +1,45 @@
 {
-  "task_type": "bug_fix",
-  "title": "Secure credentials in verify_streaming.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/verify_streaming.py**\nIssue Type: potential_secret\nSeverity: high\nLine: 35\n\n**Description:** Potential api key found\n**Suggested Action:** Move api key to environment variables\n\n**Code Context:**\n```\n            transcriber = DeepgramTranscriber(api_...\n```",
+  "task_type": "feature",
+  "title": "Add provider utility tests",
+  "description": "{\n  \"priority\": 4,\n  \"type\": \"test\",\n  \"context\": \"src/providers/deepgram_utils.py and provider_utils.py have ZERO tests. Shared logic across all providers for response parsing, error handling, validation.\",\n  \"business_context\": \"Prevents API response parsing failures, incorrect error translation, file validation bugs.\",\n  \"technical_requirements\": [\n    \"Create tests/unit/test_deepgram_utils.py\",\n    \"Create tests/unit/test_provider_utils.py\",\n    \"Test response parsing edge cases\",\n    \"Test error code translation\",\n    \"Test file size limit enforcement\",\n    \"Test format validation\"\n  ],\n  \"success_criteria\": [\n    \"Both utility files tested\",\n    \"Edge cases covered (missing fields, invalid formats)\",\n    \"Error handling verified\",\n    \"100% coverage of utility functions\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.TECH_LEAD",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "dd67c24a-db7d-4e3b-89b4-bf5d8699f714",
-    "source_type": "code_quality",
-    "priority": 5,
+    "work_item_id": "369d89e2-c3df-457c-80fe-546575b5f49a",
+    "source_type": "cli",
+    "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "quality_issue": {
-        "type": "potential_secret",
-        "severity": "high",
-        "line": 35,
-        "description": "Potential api key found",
-        "suggestion": "Move api key to environment variables",
-        "content": "            transcriber = DeepgramTranscriber(api_..."
+      "added_via": "sugar_cli",
+      "timestamp": "2025-10-26T16:46:02.519310",
+      "parsed_description": {
+        "priority": 4,
+        "type": "test",
+        "context": "src/providers/deepgram_utils.py and provider_utils.py have ZERO tests. Shared logic across all providers for response parsing, error handling, validation.",
+        "business_context": "Prevents API response parsing failures, incorrect error translation, file validation bugs.",
+        "technical_requirements": [
+          "Create tests/unit/test_deepgram_utils.py",
+          "Create tests/unit/test_provider_utils.py",
+          "Test response parsing edge cases",
+          "Test error code translation",
+          "Test file size limit enforcement",
+          "Test format validation"
+        ],
+        "success_criteria": [
+          "Both utility files tested",
+          "Edge cases covered (missing fields, invalid formats)",
+          "Error handling verified",
+          "100% coverage of utility functions"
+        ]
       },
-      "discovered_at": "2025-10-26T17:39:52.593480",
-      "source_type": "code_quality"
+      "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:39:53.055990",
+  "timestamp": "2025-10-26T17:42:41.052085",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
