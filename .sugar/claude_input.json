@@ -1,28 +1,31 @@
 {
-  "task_type": "test",
-  "title": "Add tests for validation.py",
-  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/utils/validation.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
+  "task_type": "refactor",
+  "title": "Refactor large functions in test_diskcache_wal.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/test_diskcache_wal.py**\nIssue Type: long_function\nSeverity: medium\nLine: 68\n\n**Description:** Function 'test_concurrent_access' is 56 lines long\n**Suggested Action:** Consider breaking down test_concurrent_access into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "c79f06d7-1268-4751-8d7d-606fc22cd665",
-    "source_type": "test_coverage",
+    "work_item_id": "63831adc-401e-4beb-821f-0768ed74aa41",
+    "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "test_analysis": {
-        "work_type": "missing_tests",
-        "details": {},
-        "discovered_at": "2025-10-26T17:12:22.632717",
-        "source_type": "test_coverage"
-      }
+      "quality_issue": {
+        "type": "long_function",
+        "severity": "medium",
+        "line": 68,
+        "description": "Function 'test_concurrent_access' is 56 lines long",
+        "suggestion": "Consider breaking down test_concurrent_access into smaller functions"
+      },
+      "discovered_at": "2025-10-26T17:27:31.334342",
+      "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T18:25:40.128650",
+  "timestamp": "2025-10-26T18:26:40.198911",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

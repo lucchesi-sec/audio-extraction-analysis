@@ -65,15 +65,9 @@ def test_basic_operations():
     print("Basic operations test: PASSED\n")
 
 
-def test_concurrent_access():
-    """Test concurrent access with multiple threads."""
-    print("Testing concurrent access...")
-
-    temp_dir = Path(tempfile.mkdtemp())
-    cache = DiskCache(cache_dir=temp_dir, max_size_mb=10)
-
-    # Create test entries
-    for i in range(10):
+def _create_cache_test_entries(cache: DiskCache, count: int = 10) -> None:
+    """Create test cache entries for concurrent testing."""
+    for i in range(count):
         key = CacheKey(
             file_hash=f"hash_{i}",
             provider="test",
@@ -88,34 +82,52 @@ def test_concurrent_access():
         )
         cache.put(f"key_{i}", entry)
 
-    results = []
-    errors = []
 
-    def worker(worker_id: int):
-        """Worker thread for concurrent testing."""
-        try:
-            # Perform multiple operations
-            for i in range(50):
-                key = f"key_{i % 10}"
-                # Read
-                entry = cache.get(key)
-                results.append(entry is not None)
-                # Check exists
-                exists = cache.exists(key)
-                results.append(exists)
-        except Exception as e:
-            errors.append(e)
+def _concurrent_worker(cache: DiskCache, worker_id: int, results: list, errors: list, operations: int = 50) -> None:
+    """Worker thread for concurrent cache testing."""
+    try:
+        for i in range(operations):
+            key = f"key_{i % 10}"
+            # Read operation
+            entry = cache.get(key)
+            results.append(entry is not None)
+            # Check exists operation
+            exists = cache.exists(key)
+            results.append(exists)
+    except Exception as e:
+        errors.append(e)
 
-    # Run concurrent workers
+
+def _run_concurrent_threads(cache: DiskCache, results: list, errors: list, num_threads: int = 5) -> list:
+    """Run concurrent worker threads and return the thread list."""
     threads = []
-    for i in range(5):
-        thread = threading.Thread(target=worker, args=(i,))
+    for i in range(num_threads):
+        thread = threading.Thread(target=_concurrent_worker, args=(cache, i, results, errors))
         threads.append(thread)
         thread.start()
+    return threads
 
+
+def test_concurrent_access():
+    """Test concurrent access with multiple threads."""
+    print("Testing concurrent access...")
+
+    temp_dir = Path(tempfile.mkdtemp())
+    cache = DiskCache(cache_dir=temp_dir, max_size_mb=10)
+
+    # Create test entries
+    _create_cache_test_entries(cache, count=10)
+
+    # Run concurrent workers
+    results = []
+    errors = []
+    threads = _run_concurrent_threads(cache, results, errors, num_threads=5)
+
+    # Wait for all threads to complete
     for thread in threads:
         thread.join()
 
+    # Verify results
     assert len(errors) == 0, f"Concurrent access had errors: {errors}"
     assert all(results), "Some concurrent operations failed"
     print(f"  ✓ {len(threads)} threads completed {len(results)} operations successfully")
