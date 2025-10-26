@@ -1,4 +1,33 @@
-"""OpenAI Whisper transcription service with local/cloud support."""
+"""OpenAI Whisper transcription service with local processing support.
+
+This module provides a transcription provider implementation using OpenAI's Whisper
+model for local audio-to-text conversion. It supports multiple model sizes, automatic
+language detection, and GPU acceleration while maintaining compatibility with the
+BaseTranscriptionProvider interface.
+
+The implementation uses lazy dependency loading to allow the module to be imported
+in environments where Whisper/PyTorch are not installed, enabling graceful
+degradation in multi-provider setups.
+
+Dependencies:
+    - openai-whisper: The core Whisper model (install: pip install openai-whisper)
+    - torch: PyTorch for model execution (install: pip install torch)
+    - ffmpeg: Audio format conversion (system package)
+
+Configuration:
+    Set via Config object:
+        - WHISPER_MODEL: Model size (tiny/base/small/medium/large/large-v2/large-v3)
+        - WHISPER_DEVICE: Compute device (cuda/cpu)
+        - WHISPER_COMPUTE_TYPE: Precision (float16/float32)
+
+Example:
+    >>> from pathlib import Path
+    >>> transcriber = WhisperTranscriber()
+    >>> if transcriber.validate_configuration():
+    ...     result = await transcriber.transcribe_async(Path("audio.mp3"))
+    ...     print(f"Transcript: {result.transcript}")
+    ...     print(f"Duration: {result.duration}s")
+"""
 
 from __future__ import annotations
 
@@ -240,12 +269,12 @@ class WhisperTranscriber(BaseTranscriptionProvider):
 
         await self._load_model()
 
-        # Prepare transcription options
+        # Prepare transcription options for Whisper
         options = {
-            "language": language if language != "auto" else None,
-            "task": "transcribe",
-            "fp16": self.compute_type == "float16",
-            "verbose": False,
+            "language": language if language != "auto" else None,  # None triggers auto-detection
+            "task": "transcribe",  # Alternative is "translate" (to English)
+            "fp16": self.compute_type == "float16",  # Use half-precision for speed/memory
+            "verbose": False,  # Suppress detailed logging from Whisper internals
         }
 
         logger.info(f"Transcribing with Whisper: {audio_file_path.name}")
