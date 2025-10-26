@@ -71,27 +71,30 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
         """
         return _dg_detect_mimetype(path)
 
-    def _read_audio_file(self, audio_file_path: Path) -> bytes:
-        """Read audio file into memory safely.
+    def _open_audio_file(self, audio_file_path: Path):
+        """Open audio file for streaming.
+
+        Returns file handle instead of reading entire file into memory.
+        This enables constant memory usage regardless of file size.
 
         Raises:
             OSError/PermissionError/FileNotFoundError propagated to caller
         """
-        with open(audio_file_path, "rb") as audio_file:
-            return audio_file.read()
+        return open(audio_file_path, "rb")
 
-    def _submit_transcription_job(self, client, buffer: bytes, mimetype: str, options) -> Any:
-        """Submit the prerecorded transcription request.
+    def _submit_transcription_job(self, client, audio_source, mimetype: str, options) -> Any:
+        """Submit the prerecorded transcription request with streaming support.
 
         Args:
             client: Deepgram client
-            buffer: Audio bytes
+            audio_source: File handle or bytes for audio data
             mimetype: MIME type for audio
             options: PrerecordedOptions
         """
         # DG SDK: deepgram.listen.prerecorded.v("1").transcribe_file(...)
+        # Pass file handle directly - SDK should handle streaming internally
         return client.listen.prerecorded.v("1").transcribe_file(
-            source={"buffer": buffer, "mimetype": mimetype}, options=options
+            source={"buffer": audio_source, "mimetype": mimetype}, options=options
         )
 
     def _parse_response(
@@ -360,16 +363,15 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
             options = self._build_options(language)
             mimetype = self._detect_mimetype(audio_file_path)
 
+            # Submit job with streaming (file handle instead of bytes)
+            logger.info("Sending to Deepgram Nova 3 with streaming upload...")
             try:
-                buffer = self._read_audio_file(audio_file_path)
+                with self._open_audio_file(audio_file_path) as audio_source:
+                    response = self._submit_transcription_job(client, audio_source, mimetype, options)
+                logger.info("Transcription completed successfully")
             except (OSError, PermissionError) as e:
                 logger.error(f"Failed to open audio file: {e}")
                 return None
-
-            # Submit job
-            logger.info("Sending to Deepgram Nova 3...")
-            response = self._submit_transcription_job(client, buffer, mimetype, options)
-            logger.info("Transcription completed successfully")
 
             # Parse and return
             return self._parse_response(response, audio_file_path, language)
