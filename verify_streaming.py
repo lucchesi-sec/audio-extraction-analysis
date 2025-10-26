@@ -2,8 +2,25 @@
 """
 Verification script for Deepgram streaming upload implementation.
 
-This script demonstrates that the new implementation uses file handles
-instead of loading entire files into memory.
+This script verifies that the DeepgramTranscriber implementation correctly uses
+file handle streaming instead of loading entire audio files into memory. This is
+critical for handling large audio files without exhausting system memory.
+
+Purpose:
+    - Verify that _open_audio_file returns a file handle (not bytes)
+    - Confirm _submit_transcription_job accepts audio_source parameter
+    - Validate proper context manager usage for resource cleanup
+    - Demonstrate memory efficiency: O(1) vs O(file_size)
+
+The verification uses mocking to avoid external dependencies and performs static
+analysis of the implementation to ensure streaming behavior is maintained.
+
+Usage:
+    python verify_streaming.py
+
+Exit Codes:
+    0 - All verifications passed
+    1 - Verification failed or error occurred
 """
 
 import io
@@ -12,19 +29,62 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
 
-def verify_streaming_implementation():
-    """Verify that file handles are used for streaming."""
+def verify_streaming_implementation() -> None:
+    """
+    Verify that the DeepgramTranscriber implementation uses file handle streaming.
+
+    This function performs comprehensive verification of the streaming implementation
+    by testing four critical aspects:
+
+    1. File Handle Creation: Confirms _open_audio_file returns a file handle object
+       (io.BufferedReader) rather than reading file contents into memory.
+
+    2. Method Signature: Validates that _submit_transcription_job accepts an
+       audio_source parameter for receiving file handles.
+
+    3. Memory Efficiency: Demonstrates the improvement from O(file_size) memory
+       usage (old implementation) to O(1) constant memory usage (new implementation).
+
+    4. Context Manager Usage: Ensures proper resource cleanup by verifying the
+       implementation uses 'with' statements for file handle management.
+
+    The function uses mocking to isolate the DeepgramTranscriber from external
+    dependencies (API keys, network calls) and performs static source analysis
+    to verify implementation details.
+
+    Raises:
+        AssertionError: If any verification step fails, indicating the streaming
+            implementation is not correctly configured.
+        ImportError: If required modules (src.providers.deepgram, etc.) cannot
+            be imported.
+        Exception: For unexpected errors during verification (e.g., file access
+            issues, inspection failures).
+
+    Returns:
+        None: Prints verification results to stdout and exits via sys.exit().
+
+    Example Output:
+        ======================================================================
+        Deepgram Streaming Upload Verification
+        ======================================================================
+
+        1. Testing file handle creation...
+           ✓ _open_audio_file returns file handle (not bytes)
+        ...
+        VERIFICATION COMPLETE
+    """
     print("=" * 70)
     print("Deepgram Streaming Upload Verification")
     print("=" * 70)
 
-    # Import after sys.path is set
+    # Import modules here to allow sys.path modifications before imports if needed
     from src.providers.deepgram import DeepgramTranscriber
     from src.providers.base import CircuitBreakerConfig
     from src.utils.retry import RetryConfig
 
     print("\n1. Testing file handle creation...")
-    # Mock the initialization and config to avoid dependency issues
+    # Mock the initialization and config to avoid external dependencies (API keys,
+    # network calls, etc.) and enable isolated testing of the streaming behavior
     with patch('src.providers.deepgram.Config') as mock_config:
         # Set API key on mock config (matches test pattern in test_transcription_service.py)
         mock_config.DEEPGRAM_API_KEY = 'test_key'
@@ -38,10 +98,13 @@ def verify_streaming_implementation():
             # API key is read from mocked Config
             transcriber = DeepgramTranscriber()
 
-            # Test that _open_audio_file returns a file handle
+            # Test that _open_audio_file returns a file handle (not file contents).
+            # We use a simple text file for testing since we only need to verify
+            # that a file handle is returned, not actual audio processing behavior.
             test_file = Path(__file__).parent / "README.md"
             if not test_file.exists():
-                test_file = Path(__file__)  # Use this script as test file
+                # Fallback to using this script itself as the test file
+                test_file = Path(__file__)
 
             mock_file = MagicMock(spec=io.BufferedReader)
             with patch("builtins.open", return_value=mock_file) as mock_open:
@@ -53,7 +116,9 @@ def verify_streaming_implementation():
             print("\n2. Verifying method signature changes...")
             import inspect
 
-            # Check _submit_transcription_job signature
+            # Check that _submit_transcription_job signature includes audio_source parameter.
+            # This parameter is essential for accepting file handles instead of raw bytes,
+            # enabling the streaming implementation.
             sig = inspect.signature(transcriber._submit_transcription_job)
             params = list(sig.parameters.keys())
             assert 'audio_source' in params, "_submit_transcription_job should accept audio_source"
@@ -72,7 +137,10 @@ def verify_streaming_implementation():
             print("     ✓ Streaming approach implemented")
 
             print("\n4. Checking context manager usage...")
-            # Verify the transcription implementation uses 'with' statement
+            # Verify the transcription implementation uses 'with' statement for proper
+            # file handle management. This ensures files are automatically closed even
+            # if exceptions occur, preventing resource leaks. We inspect the source code
+            # directly since this is a structural requirement of the implementation.
             source = inspect.getsource(transcriber._transcribe_impl)
             assert 'with self._open_audio_file' in source, "Should use context manager"
             assert 'as audio_source:' in source, "Should bind file handle to variable"
@@ -101,11 +169,13 @@ def verify_streaming_implementation():
 if __name__ == "__main__":
     try:
         verify_streaming_implementation()
-        sys.exit(0)
+        sys.exit(0)  # All verifications passed
     except AssertionError as e:
+        # Verification failed - streaming implementation not correct
         print(f"\n❌ Verification failed: {e}")
         sys.exit(1)
     except Exception as e:
+        # Unexpected error during verification (import errors, file access, etc.)
         print(f"\n❌ Error during verification: {e}")
         import traceback
         traceback.print_exc()

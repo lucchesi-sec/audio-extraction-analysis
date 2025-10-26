@@ -250,6 +250,79 @@ class TestTTLEviction:
         victim = select_ttl_victim(cache, keys)
         assert victim == "dummy_key"
 
+    def test_ttl_with_expired_entries(self):
+        """TTL should handle entries with negative remaining TTL (expired)."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        # Create entries that expired in the past (created long ago with short TTL)
+        base_time = datetime.now() - timedelta(seconds=1000)
+
+        # All entries are expired, but key_0 has least remaining (most negative)
+        ttls_and_ages = [
+            (100, 1000),  # key_0: TTL=100, age=1000, remaining=-900 (most expired)
+            (200, 1000),  # key_1: TTL=200, age=1000, remaining=-800
+            (500, 1000),  # key_2: TTL=500, age=1000, remaining=-500
+        ]
+
+        for i, (ttl, age_offset) in enumerate(ttls_and_ages):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time - timedelta(seconds=age_offset - 1000),
+                accessed_at=base_time,
+                access_count=1,
+                ttl=ttl,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should select key_0 with most negative remaining TTL
+        victim = select_ttl_victim(cache, keys)
+        assert victim == "key_0"
+
+    def test_ttl_with_mixed_ttl_and_none(self):
+        """TTL should handle mix of entries with TTL and without TTL (None)."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        base_time = datetime.now() - timedelta(seconds=50)
+
+        # Mix of TTL and None entries
+        ttl_values = [None, 200, None, 100, None]  # key_3 has TTL=100, expires soonest
+
+        for i, ttl in enumerate(ttl_values):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time,
+                accessed_at=base_time,
+                access_count=1,
+                ttl=ttl,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should select key_3 (TTL=100) ignoring None entries
+        victim = select_ttl_victim(cache, keys)
+        assert victim == "key_3"
+
 
 class TestSizeEviction:
     """Tests for SIZE eviction strategy (largest entry)."""
@@ -324,6 +397,72 @@ class TestSizeEviction:
 
         victim = select_size_victim(cache, keys)
         assert victim == "dummy_key"
+
+    def test_size_with_zero_sizes(self):
+        """SIZE should handle entries with zero size."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        base_time = datetime.now()
+
+        # Mix of zero and positive sizes
+        sizes = [0, 100, 0, 500, 0]  # key_3 with size=500 is largest
+
+        for i, size in enumerate(sizes):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=size,
+                created_at=base_time,
+                accessed_at=base_time,
+                access_count=1,
+                ttl=3600,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should select key_3 with largest size (500)
+        victim = select_size_victim(cache, keys)
+        assert victim == "key_3"
+
+    def test_size_all_zero_sizes(self):
+        """SIZE should handle all entries having zero size."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        base_time = datetime.now()
+
+        # All entries have zero size
+        for i in range(3):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=0,
+                created_at=base_time,
+                accessed_at=base_time,
+                access_count=1,
+                ttl=3600,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should return a valid key (arbitrary choice when all are zero)
+        victim = select_size_victim(cache, keys)
+        assert victim in keys
 
 
 class TestFIFOEviction:
