@@ -391,7 +391,8 @@ class TestHandleFfmpegErrorsAsyncDecorator:
 class TestDecoratorComparison:
     """Tests comparing sync and async decorator behavior."""
 
-    def test_sync_and_async_handle_same_errors(self):
+    @pytest.mark.asyncio
+    async def test_sync_and_async_handle_same_errors(self):
         """Test that both decorators handle the same error types."""
         @handle_ffmpeg_errors("Sync comparison")
         def sync_func() -> Optional[str]:
@@ -405,9 +406,8 @@ class TestDecoratorComparison:
         sync_result = sync_func()
         assert sync_result is None
 
-        # Async requires event loop
-        import asyncio
-        async_result = asyncio.run(async_func())
+        # Test async with consistent pytest.mark.asyncio pattern
+        async_result = await async_func()
         assert async_result is None
 
     def test_both_decorators_preserve_metadata(self):

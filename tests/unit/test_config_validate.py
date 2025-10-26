@@ -1,11 +1,36 @@
 """Comprehensive tests for Config.validate() method."""
 
 import os
+import sys
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from src.config import Config
+
+# Test constants
+VALID_DEEPGRAM_KEY = "valid_deepgram_key_123"
+VALID_ELEVENLABS_KEY = "valid_elevenlabs_key_456"
+
+
+@contextmanager
+def temporarily_remove_modules(*module_names):
+    """Context manager to temporarily remove modules from sys.modules.
+
+    Useful for testing import errors without affecting other tests.
+    """
+    backups = {name: sys.modules.get(name) for name in module_names}
+
+    try:
+        for name in module_names:
+            if name in sys.modules:
+                del sys.modules[name]
+        yield
+    finally:
+        for name, backup in backups.items():
+            if backup is not None:
+                sys.modules[name] = backup
 
 
 class TestConfigValidate:
@@ -13,7 +38,7 @@ class TestConfigValidate:
 
     def test_validate_deepgram_success(self):
         """Test successful validation with valid Deepgram API key."""
-        with patch.dict(os.environ, {"DEEPGRAM_API_KEY": "valid_deepgram_key_123"}):
+        with patch.dict(os.environ, {"DEEPGRAM_API_KEY": VALID_DEEPGRAM_KEY}):
             # Should not raise any exception
             Config.validate("deepgram")
 
