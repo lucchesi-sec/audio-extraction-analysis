@@ -1,12 +1,12 @@
 {
   "task_type": "test",
-  "title": "Review test coverage for test_pipeline_progress.py",
-  "description": "Analyze ./tests/unit/test_pipeline_progress.py and ensure adequate test coverage. Add missing tests for critical functionality.",
+  "title": "Review test coverage for security_fix_test.py",
+  "description": "Analyze ./tests/security_fix_test.py and ensure adequate test coverage. Add missing tests for critical functionality.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "05b5773c-ec37-43f3-9a08-63c071147dfc",
+    "work_item_id": "177a2c26-8a06-4af0-b33d-b748d9d1f2fc",
     "source_type": "maintenance_generator",
     "priority": 3,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "test",
-      "discovered_at": "2025-10-26T17:52:36.573576",
+      "discovered_at": "2025-10-26T18:08:41.532662",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T18:27:47.287685",
+  "timestamp": "2025-10-26T18:27:48.032831",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
