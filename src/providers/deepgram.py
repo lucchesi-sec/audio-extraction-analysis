@@ -1,4 +1,11 @@
-"""Deepgram Nova 3 transcription service with comprehensive features."""
+"""Deepgram Nova 3 transcription provider implementation.
+
+This module provides a full-featured transcription service using Deepgram's Nova 3 model,
+supporting advanced capabilities including speaker diarization, topic detection, intent
+analysis, sentiment analysis, and automatic summarization. The implementation uses streaming
+uploads for memory efficiency and includes comprehensive error handling, retry logic, and
+circuit breaker patterns for production reliability.
+"""
 
 from __future__ import annotations
 
@@ -40,14 +47,33 @@ except ImportError as e:
 
 
 class DeepgramTranscriber(BaseTranscriptionProvider):
-    """Deepgram Nova 3 transcription service with full feature support."""
+    """Deepgram Nova 3 transcription provider with comprehensive AI-powered features.
+
+    This provider implements the Deepgram Nova 3 transcription engine with support for:
+    - Speaker diarization (identifying and separating speakers)
+    - Topic detection and chapter segmentation
+    - Intent analysis (detecting user goals and actions)
+    - Sentiment analysis (positive/negative/neutral detection)
+    - Automatic summarization
+    - Language detection and multi-language support
+    - Smart formatting with punctuation and paragraphs
+
+    The implementation uses streaming uploads to handle large audio files efficiently,
+    includes retry logic with exponential backoff, and implements circuit breaker patterns
+    for fault tolerance in production environments.
+    """
 
     # ---------------------- Internal helpers (extracted) ----------------------
     def _create_client(self):
-        """Create and return a Deepgram client configured with sane defaults.
+        """Create and return a Deepgram client configured for production use.
+
+        The client is configured with:
+        - 600 second (10 minute) timeout to handle large audio files
+        - API key from instance configuration
+        - Environment-based configuration options
 
         Returns:
-            Deepgram client instance
+            DeepgramClient: Configured Deepgram SDK client instance ready for API calls
         """
         # Import Deepgram SDK lazily to avoid import-time failures when optional
         from deepgram import ClientOptionsFromEnv, DeepgramClient  # type: ignore
@@ -57,28 +83,51 @@ class DeepgramTranscriber(BaseTranscriptionProvider):
         return DeepgramClient(self.api_key, config=config)
 
     def _build_options(self, language: str):
-        """Build PrerecordedOptions for Nova-3 with all features enabled.
+        """Build PrerecordedOptions for Nova-3 with all AI features enabled.
+
+        Configures the Deepgram API request to enable speaker diarization, topic detection,
+        intent analysis, sentiment analysis, summarization, and smart formatting.
 
         Args:
-            language: Preferred language code
+            language: ISO 639-1 language code (e.g., 'en', 'es', 'fr') for transcription
+
+        Returns:
+            PrerecordedOptions: Fully configured options object for the Deepgram API
         """
         return build_prerecorded_options(language)
 
     def _detect_mimetype(self, path: Path) -> str:
-        """Best-effort mimetype detection based on file extension.
+        """Detect audio file MIME type based on file extension.
 
-        Defaults to audio/mp3 if unknown to keep behavior consistent with prior code.
+        Uses a lookup table of common audio file extensions to determine the appropriate
+        MIME type for the Deepgram API. Falls back to 'audio/mp3' for unrecognized
+        extensions to maintain backward compatibility.
+
+        Args:
+            path: Path object pointing to the audio file
+
+        Returns:
+            str: MIME type string (e.g., 'audio/wav', 'audio/mp3', 'audio/flac')
         """
         return _dg_detect_mimetype(path)
 
     def _open_audio_file(self, audio_file_path: Path):
-        """Open audio file for streaming.
+        """Open audio file for streaming upload to Deepgram API.
 
-        Returns file handle instead of reading entire file into memory.
-        This enables constant memory usage regardless of file size.
+        Opens the file in binary read mode and returns a file handle rather than loading
+        the entire file into memory. This streaming approach enables processing of large
+        audio files (GB+) with constant memory usage, preventing out-of-memory errors.
+
+        Args:
+            audio_file_path: Path to the audio file to open
+
+        Returns:
+            BinaryIO: File handle opened in binary read mode ('rb')
 
         Raises:
-            OSError/PermissionError/FileNotFoundError propagated to caller
+            FileNotFoundError: If the audio file doesn't exist at the specified path
+            PermissionError: If the process lacks read permissions for the file
+            OSError: For other I/O errors (disk failures, invalid paths, etc.)
         """
         return open(audio_file_path, "rb")
 

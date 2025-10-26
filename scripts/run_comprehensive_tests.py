@@ -57,7 +57,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Load .env from project root so subprocesses inherit keys even when cwd is test_data_dir
+# Load .env from project root so subprocesses inherit API keys even when cwd is test_data_dir
+# This ensures that DEEPGRAM_API_KEY and other secrets are available to subprocess
+# commands executed from different working directories during tests
 try:
     from dotenv import load_dotenv  # type: ignore
     _root_env = Path(__file__).parent.parent / ".env"
@@ -220,14 +222,16 @@ class PipelineTestRunner:
             success = result.returncode == expected_exit_code
             test_duration = time.time() - test_start
             
+            # Build test result with truncated output for manageable report sizes
+            # Last 4000 chars typically contain the most relevant error/success info
             test_result = {
                 "name": name,
                 "command": command,
                 "success": success,
                 "exit_code": result.returncode,
                 "expected_exit_code": expected_exit_code,
-                "stdout": result.stdout[-4000:],  # Tail for diagnostics
-                "stderr": result.stderr[-4000:],
+                "stdout": result.stdout[-4000:],  # Tail to keep report size reasonable
+                "stderr": result.stderr[-4000:],  # Most relevant errors appear at end
                 "duration": test_duration,
                 "timestamp": datetime.now().isoformat()
             }
@@ -292,7 +296,9 @@ class PipelineTestRunner:
         test_video, test_audio = self.setup_test_files()
         output_dir = self.temp_dir / "output"
 
-        # 1) Extract audio from video (if available) and remember path
+        # Test 1: Extract audio from video (if available) and cache for later tests
+        # The extracted audio path is saved in self.extracted_audio for reuse in
+        # provider/performance/output tests to avoid redundant extraction
         if test_video:
             extracted = self.temp_dir / "extracted.mp3"
             r = self.run_test(
@@ -306,13 +312,16 @@ class PipelineTestRunner:
                 self.extracted_audio = extracted
 
             # 2) Run process pipeline with explicit provider=deepgram to use .env
+            # Test 2: Run complete processing pipeline with different analysis styles
+            # Each test uses explicit --provider deepgram to ensure API key from .env is used
             for name, cmd, outdir in [
                 ("Complete processing pipeline", f"audio-extraction-analysis process \"{test_video}\" --provider deepgram --output-dir {output_dir}", output_dir),
                 ("Concise analysis style", f"audio-extraction-analysis process \"{test_video}\" --provider deepgram --analysis-style concise --output-dir {output_dir}/concise", output_dir / "concise"),
                 ("Full analysis style", f"audio-extraction-analysis process \"{test_video}\" --provider deepgram --analysis-style full --output-dir {output_dir}/full", output_dir / "full"),
             ]:
                 res = self.run_test(name, cmd, 0, timeout=600)
-                # Attach pipeline debug dump if present
+                # If test failed and pipeline debug dump exists, attach it to stderr for diagnostics
+                # This helps troubleshoot pipeline failures without needing to inspect temp directories
                 try:
                     dbg = Path(outdir) / "pipeline_debug.json"
                     if not res.get("success") and dbg.exists():
@@ -797,7 +806,17 @@ class PipelineTestRunner:
             self.cleanup()
     
     def cleanup(self):
-        """Clean up temporary files."""
+        """Clean up temporary files and directories created during testing.
+
+        Removes the temporary directory tree created in __init__, including all
+        extracted audio, output files, and test artifacts. Called automatically
+        by run_all_tests() in the finally block to ensure cleanup even on failure.
+
+        Side Effects:
+            - Recursively deletes self.temp_dir and all contents
+            - Logs cleanup success or failure warnings
+            - Gracefully handles cases where temp_dir doesn't exist or can't be removed
+        """
         try:
             import shutil
             if self.temp_dir.exists():
@@ -807,10 +826,34 @@ class PipelineTestRunner:
             logger.warning(f"Failed to clean up temp directory: {e}")
     
     def generate_report(self, output_file: str = "test_report.json"):
-        """Generate comprehensive test report.
-        
+        """Generate comprehensive test report in JSON format.
+
+        Creates a detailed JSON report containing test metadata, summary statistics,
+        and complete test results. The report includes both successes and failures
+        with full diagnostic information.
+
+        Report Structure:
+            - metadata: Timestamp, duration, Python version, platform, directories
+            - summary: Total tests, passed, failed, success rate, duration
+            - failures: Array of failed test results with error details
+            - successes: Array of passed test results
+            - all_results: Complete list of all test results in execution order
+
+        Also prints a formatted summary to console showing:
+            - Test counts (total, passed, failed)
+            - Success rate percentage
+            - Detailed failure information if any tests failed
+
         Args:
-            output_file: Path to output JSON report
+            output_file: Path to output JSON report (default: test_report.json)
+
+        Returns:
+            dict: The generated report structure
+
+        Side Effects:
+            - Writes JSON report to output_file
+            - Prints formatted summary to stdout
+            - Uses test data from self.results
         """
         total = len(self.results)
         passed = sum(1 for r in self.results if r.get("success", False))
@@ -872,10 +915,35 @@ class PipelineTestRunner:
         return report
     
     def generate_markdown_report(self, output_file: str = "test_report.md"):
-        """Generate a markdown version of the test report.
-        
+        """Generate a human-readable markdown version of the test report.
+
+        Creates a formatted Markdown document suitable for documentation, GitHub issues,
+        or project wikis. Tests are automatically categorized by type for easy navigation.
+
+        Report Sections:
+            - Header: Date, duration, platform, Python version
+            - Summary Table: Total tests, passed, failed, success rate
+            - Category Sections: Results grouped by test type (Core, Provider, Security, etc.)
+            - Failed Tests Detail: Full error messages and stderr for failures
+            - Recommendations: Actionable next steps based on results
+
+        Test Categorization:
+            Tests are automatically categorized based on keywords in test names:
+            - Core Functionality: extraction, pipeline, processing
+            - Provider Tests: provider, API integrations
+            - Security Tests: security, traversal, injection
+            - Error Handling: error, nonexistent, invalid
+            - CLI Arguments: help, version, quality
+            - Performance: cache, performance
+            - Output Formats: json, markdown
+
         Args:
-            output_file: Path to output markdown report
+            output_file: Path to output markdown report (default: test_report.md)
+
+        Side Effects:
+            - Writes formatted markdown to output_file
+            - Logs report save location to INFO level
+            - Includes recommendations section with troubleshooting steps
         """
         total = len(self.results)
         passed = sum(1 for r in self.results if r.get("success", False))
@@ -897,7 +965,8 @@ class PipelineTestRunner:
             f.write(f"| Failed | {failed} ✗ |\n")
             f.write(f"| Success Rate | {(passed/total)*100:.1f}% |\n\n")
             
-            # Group results by category
+            # Group results by category based on test name keywords
+            # This automatic categorization helps readers navigate the report by topic
             categories = {
                 "Core Functionality": [],
                 "Provider Tests": [],
@@ -907,7 +976,8 @@ class PipelineTestRunner:
                 "Performance": [],
                 "Output Formats": [],
             }
-            
+
+            # Categorize each test result based on keywords in test name
             for result in self.results:
                 name = result.get("name", "")
                 if "extraction" in name.lower() or "pipeline" in name.lower() or "processing" in name.lower():
@@ -966,7 +1036,27 @@ class PipelineTestRunner:
 
 
 def main():
-    """Main entry point for test runner."""
+    """Main entry point for the comprehensive test runner CLI.
+
+    Parses command-line arguments, configures logging, creates the test runner,
+    executes all test suites, and generates reports. Exits with appropriate
+    status codes for CI/CD integration.
+
+    Command-Line Arguments:
+        --test-data-dir PATH: Directory containing test files (deprecated, always uses data/input)
+        --json-report PATH: JSON report output path (default: test_report.json)
+        --markdown-report PATH: Markdown report output path (default: test_report.md)
+        --verbose: Enable verbose/debug logging
+        --debug: Enable pipeline debug dumps (sets AUDIO_PIPELINE_DEBUG=1)
+
+    Exit Codes:
+        0: All tests passed successfully
+        1: One or more tests failed
+        130: User interrupted with Ctrl+C
+
+    The function handles KeyboardInterrupt gracefully and ensures cleanup occurs
+    even on unexpected exceptions.
+    """
     import argparse
     
     parser = argparse.ArgumentParser(
