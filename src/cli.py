@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -732,8 +733,6 @@ def _execute_processing_pipeline(
         errors = pipeline_result.get("errors", ["Unknown error"])
         logger.error(f"Pipeline processing failed: {', '.join(errors)}")
         # Targeted diagnostics: dump stage results and context
-        import os
-
         if os.getenv("AUDIO_PIPELINE_DEBUG", "").lower() in {"1", "true", "yes"}:
             diag = {
                 "stage_results": pipeline_result.get("stage_results"),
