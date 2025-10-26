@@ -9,13 +9,24 @@ from src.models.transcription import TranscriptionResult
 from src.providers.whisper import WhisperTranscriber
 
 
+@pytest.fixture(autouse=True)
+def mock_whisper_config():
+    """Automatically mock Config for all whisper tests."""
+    with patch("src.providers.whisper.Config") as mock_config:
+        mock_config.WHISPER_MODEL = "base"
+        mock_config.WHISPER_DEVICE = "cpu"
+        mock_config.WHISPER_COMPUTE_TYPE = "float16"
+        yield mock_config
+
+
 class TestWhisperTranscriber:
     """Test Whisper transcription provider functionality."""
 
     @pytest.fixture
     def whisper_transcriber(self):
         """Create a WhisperTranscriber instance for testing."""
-        return WhisperTranscriber()
+        with patch("src.providers.whisper.torch", None):
+            return WhisperTranscriber()
 
     def test_validate_configuration_with_dependencies(self, whisper_transcriber):
         """Test configuration validation when dependencies are available."""
