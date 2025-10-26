@@ -1,31 +1,28 @@
 {
-  "task_type": "refactor",
-  "title": "Refactor large functions in state_manager.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/orchestration/state_manager.py**\nIssue Type: long_function\nSeverity: medium\nLine: 439\n\n**Description:** Function '_deserialize_state' is 51 lines long\n**Suggested Action:** Consider breaking down _deserialize_state into smaller functions",
+  "task_type": "test",
+  "title": "Add tests for __init__.py",
+  "description": "**Missing Test Coverage**\n\nFile: /home/enzo/audio-extraction-analysis/src/__init__.py\n\nThis source file appears to lack corresponding test coverage. Adding tests will help ensure code reliability and catch regressions.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "cb226b05-b1c1-4fe6-b534-71a144a10527",
-    "source_type": "code_quality",
+    "work_item_id": "d015ef49-237c-472f-b824-0b59c7a71213",
+    "source_type": "test_coverage",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "quality_issue": {
-        "type": "long_function",
-        "severity": "medium",
-        "line": 439,
-        "description": "Function '_deserialize_state' is 51 lines long",
-        "suggestion": "Consider breaking down _deserialize_state into smaller functions"
-      },
-      "discovered_at": "2025-10-26T16:49:45.685126",
-      "source_type": "code_quality"
+      "test_analysis": {
+        "work_type": "missing_tests",
+        "details": {},
+        "discovered_at": "2025-10-26T16:49:45.794441",
+        "source_type": "test_coverage"
+      }
     }
   },
-  "timestamp": "2025-10-26T18:15:06.421409",
+  "timestamp": "2025-10-26T18:17:21.895475",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

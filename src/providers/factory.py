@@ -77,6 +77,102 @@ class TranscriptionProviderFactory:
         return configured
 
     @classmethod
+    def _get_default_configs(
+        cls,
+        provider_name: str,
+        circuit_config: Optional[CircuitBreakerConfig],
+        retry_config: Optional[RetryConfig],
+    ) -> tuple[CircuitBreakerConfig, RetryConfig]:
+        """Get default circuit breaker and retry configurations.
+
+        Args:
+            provider_name: Name of the provider
+            circuit_config: Existing circuit config or None
+            retry_config: Existing retry config or None
+
+        Returns:
+            Tuple of (circuit_config, retry_config)
+        """
+        if circuit_config is not None and retry_config is not None:
+            return circuit_config, retry_config
+
+        config_dict = Config.get_provider_config(provider_name)
+
+        if circuit_config is None:
+            circuit_config = CircuitBreakerConfig(
+                failure_threshold=config_dict.get("circuit_breaker_failure_threshold", 5),
+                recovery_timeout=config_dict.get("circuit_breaker_recovery_timeout", 60.0),
+            )
+
+        if retry_config is None:
+            retry_config = RetryConfig(
+                max_attempts=config_dict.get("max_retries", 3),
+                base_delay=config_dict.get("retry_delay", 1.0),
+                max_delay=config_dict.get("max_retry_delay", 60.0),
+                exponential_base=config_dict.get("retry_exponential_base", 2.0),
+                jitter=config_dict.get("retry_jitter_enabled", True),
+            )
+
+        return circuit_config, retry_config
+
+    @classmethod
+    def _run_health_check(cls, provider: BaseTranscriptionProvider, provider_name: str) -> None:
+        """Run health check on provider and log results.
+
+        Args:
+            provider: Provider instance to check
+            provider_name: Name of the provider for logging
+        """
+        if not Config.HEALTH_CHECK_ENABLED:
+            return
+
+        try:
+            health_result = provider.health_check()
+            if not health_result.get("healthy", False):
+                logger.warning(
+                    f"Provider '{provider_name}' health check failed: {health_result.get('status')}"
+                )
+                # Don't raise error, just log warning - provider might recover
+            else:
+                logger.info(f"Provider '{provider_name}' health check passed")
+        except Exception as e:
+            logger.warning(f"Health check failed for '{provider_name}': {e}")
+            # Don't raise error - health check is informational
+
+    @classmethod
+    def _create_provider_instance(
+        cls,
+        provider_class: Type[BaseTranscriptionProvider],
+        provider_name: str,
+        api_key: Optional[str],
+        circuit_config: CircuitBreakerConfig,
+        retry_config: RetryConfig,
+    ) -> BaseTranscriptionProvider:
+        """Create and validate provider instance.
+
+        Args:
+            provider_class: Provider class to instantiate
+            provider_name: Name of the provider for error messages
+            api_key: Optional API key
+            circuit_config: Circuit breaker configuration
+            retry_config: Retry configuration
+
+        Returns:
+            Validated provider instance
+
+        Raises:
+            ValueError: If provider configuration is invalid
+        """
+        provider = provider_class(
+            api_key=api_key, circuit_config=circuit_config, retry_config=retry_config
+        )
+
+        if not provider.validate_configuration():
+            raise ValueError(f"Provider '{provider_name}' is not properly configured")
+
+        return provider
+
+    @classmethod
     def create_provider(
         cls,
         provider_name: str,
@@ -109,47 +205,19 @@ class TranscriptionProviderFactory:
         provider_class = cls._providers[provider_name]
 
         try:
-            # Create provider with configurations
-            if circuit_config is None or retry_config is None:
-                # Get default configurations from Config
-                config_dict = Config.get_provider_config(provider_name)
-
-                if circuit_config is None:
-                    circuit_config = CircuitBreakerConfig(
-                        failure_threshold=config_dict.get("circuit_breaker_failure_threshold", 5),
-                        recovery_timeout=config_dict.get("circuit_breaker_recovery_timeout", 60.0),
-                    )
-
-                if retry_config is None:
-                    retry_config = RetryConfig(
-                        max_attempts=config_dict.get("max_retries", 3),
-                        base_delay=config_dict.get("retry_delay", 1.0),
-                        max_delay=config_dict.get("max_retry_delay", 60.0),
-                        exponential_base=config_dict.get("retry_exponential_base", 2.0),
-                        jitter=config_dict.get("retry_jitter_enabled", True),
-                    )
-
-            provider = provider_class(
-                api_key=api_key, circuit_config=circuit_config, retry_config=retry_config
+            # Get default configurations if not provided
+            circuit_config, retry_config = cls._get_default_configs(
+                provider_name, circuit_config, retry_config
             )
 
-            if not provider.validate_configuration():
-                raise ValueError(f"Provider '{provider_name}' is not properly configured")
+            # Create and validate provider instance
+            provider = cls._create_provider_instance(
+                provider_class, provider_name, api_key, circuit_config, retry_config
+            )
 
             # Run health check if requested
-            if run_health_check and Config.HEALTH_CHECK_ENABLED:
-                try:
-                    health_result = provider.health_check()
-                    if not health_result.get("healthy", False):
-                        logger.warning(
-                            f"Provider '{provider_name}' health check failed: {health_result.get('status')}"
-                        )
-                        # Don't raise error, just log warning - provider might recover
-                    else:
-                        logger.info(f"Provider '{provider_name}' health check passed")
-                except Exception as e:
-                    logger.warning(f"Health check failed for '{provider_name}': {e}")
-                    # Don't raise error - health check is informational
+            if run_health_check:
+                cls._run_health_check(provider, provider_name)
 
             logger.info(f"Created transcription provider: {provider.get_provider_name()}")
             return provider
