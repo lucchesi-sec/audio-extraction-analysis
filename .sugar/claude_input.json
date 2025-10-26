@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Refactor large functions in common_validation.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/utils/common_validation.py**\nIssue Type: long_function\nSeverity: medium\nLine: 29\n\n**Description:** Function 'validate_file_path' is 59 lines long\n**Suggested Action:** Consider breaking down validate_file_path into smaller functions",
+  "title": "Refactor large functions in file_validation.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/utils/file_validation.py**\nIssue Type: long_function\nSeverity: medium\nLine: 22\n\n**Description:** Function 'validate_audio_file' is 60 lines long\n**Suggested Action:** Consider breaking down validate_audio_file into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "acd62f62-eef7-4ea5-badd-6ce81977bcdb",
+    "work_item_id": "b157599d-f29a-4367-874a-d0b3a31a8116",
     "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
@@ -17,15 +17,15 @@
       "quality_issue": {
         "type": "long_function",
         "severity": "medium",
-        "line": 29,
-        "description": "Function 'validate_file_path' is 59 lines long",
-        "suggestion": "Consider breaking down validate_file_path into smaller functions"
+        "line": 22,
+        "description": "Function 'validate_audio_file' is 60 lines long",
+        "suggestion": "Consider breaking down validate_audio_file into smaller functions"
       },
-      "discovered_at": "2025-10-26T16:49:45.633147",
+      "discovered_at": "2025-10-26T16:49:45.636923",
       "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T17:52:37.167047",
+  "timestamp": "2025-10-26T17:54:43.743167",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
