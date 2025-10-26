@@ -1,31 +1,26 @@
 {
-  "task_type": "refactor",
-  "title": "Refactor large functions in test_diskcache_wal.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/test_diskcache_wal.py**\nIssue Type: long_function\nSeverity: medium\nLine: 68\n\n**Description:** Function 'test_concurrent_access' is 56 lines long\n**Suggested Action:** Consider breaking down test_concurrent_access into smaller functions",
+  "task_type": "test",
+  "title": "Review test coverage for test_pipeline_progress.py",
+  "description": "Analyze ./tests/unit/test_pipeline_progress.py and ensure adequate test coverage. Add missing tests for critical functionality.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.CODE_REVIEWER",
+  "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "63831adc-401e-4beb-821f-0768ed74aa41",
-    "source_type": "code_quality",
+    "work_item_id": "05b5773c-ec37-43f3-9a08-63c071147dfc",
+    "source_type": "maintenance_generator",
     "priority": 3,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "quality_issue": {
-        "type": "long_function",
-        "severity": "medium",
-        "line": 68,
-        "description": "Function 'test_concurrent_access' is 56 lines long",
-        "suggestion": "Consider breaking down test_concurrent_access into smaller functions"
-      },
-      "discovered_at": "2025-10-26T17:27:31.334342",
-      "source_type": "code_quality"
+      "maintenance_task": true,
+      "task_type": "test",
+      "discovered_at": "2025-10-26T17:52:36.573576",
+      "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T18:26:40.198911",
+  "timestamp": "2025-10-26T18:27:47.287685",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
