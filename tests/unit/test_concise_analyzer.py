@@ -100,7 +100,8 @@ def test_concise_analyzer_file_has_content(tmp_path):
 
     content = output_path.read_text(encoding="utf-8")
 
-    # Verify all major sections are present
+    # Verify all 9 major sections are present in the generated markdown report
+    # Each section should appear regardless of whether data is available (with fallbacks)
     assert "# Audio Analysis Report" in content
     assert "## 📋 Overview" in content
     assert "## 🎯 Key Topics" in content
@@ -189,6 +190,7 @@ def test_key_topics_with_data():
     The test uses varying mention counts (2, 3, 5, 7) to verify sorting behavior.
     """
     result = _make_basic_result()
+    # Topics with different mention counts to test sorting: quality(7) > planning(5) > execution(3) > deadline(2)
     result.topics = {
         "planning": 5,
         "execution": 3,
@@ -200,6 +202,7 @@ def test_key_topics_with_data():
     topics_section = analyzer._generate_key_topics(result)
 
     assert "## 🎯 Key Topics" in topics_section
+    # Check the top 2 topics (quality with 7, planning with 5) are present and formatted
     assert "Quality" in topics_section  # Should be title-cased
     assert "(7 mentions)" in topics_section
     assert "Planning" in topics_section
@@ -231,6 +234,8 @@ def test_speaker_insights_with_speakers():
     Uses realistic test data: 70s (58.3%) and 50s (41.7%) for a balanced conversation.
     """
     result = _make_basic_result()
+    # Two speakers with realistic time distribution: Speaker 0 (70s/58.3%), Speaker 1 (50s/41.7%)
+    # Total: 120s (matches basic_result duration), representing a typical 2-person conversation
     result.speakers = [
         TranscriptionSpeaker(id=0, total_time=70.0, percentage=58.3),
         TranscriptionSpeaker(id=1, total_time=50.0, percentage=41.7),
@@ -241,7 +246,7 @@ def test_speaker_insights_with_speakers():
 
     assert "## 👥 Speaker Analysis" in speaker_section
     assert "Speaker 0" in speaker_section
-    assert "01:10" in speaker_section  # 70 seconds formatted
+    assert "01:10" in speaker_section  # 70 seconds formatted as MM:SS
     assert "58.3%" in speaker_section
     assert "Speaker 1" in speaker_section
 
@@ -314,7 +319,10 @@ def test_highlights_and_quotes_extraction():
     the extraction algorithm identifies meaningful highlights rather than
     short, trivial statements.
     """
-    # Create a result with longer, more meaningful sentences
+    # Create a result with varying sentence lengths:
+    # - Short intro (7 words) - should be ignored
+    # - 4 long, substantive sentences (20+ words each) - should be extracted
+    # This tests that the algorithm filters by length and content quality
     result = TranscriptionResult(
         transcript=(
             "This is an introductory statement. "
@@ -333,7 +341,7 @@ def test_highlights_and_quotes_extraction():
     highlights = analyzer._generate_highlights_and_quotes(result)
 
     assert "## 💡 Key Highlights & Quotes" in highlights
-    # Should extract meaningful long sentences
+    # Should extract at least one of the long, meaningful sentences (not the short intro)
     assert "quality standards" in highlights or "operational efficiency" in highlights or "stakeholders" in highlights
 
 
@@ -580,7 +588,23 @@ def test_get_sentiment_emoji():
 
 
 def test_complete_analysis_with_all_features(tmp_path):
-    """Integration test with all features enabled."""
+    """
+    Integration test: Complete analysis with all features enabled.
+
+    This end-to-end test verifies the analyzer handles a fully-featured
+    transcription result with:
+    - Summary text
+    - Topic detection with frequencies
+    - Speaker diarization (2 speakers)
+    - Chapter segmentation (2 segments)
+    - Utterance-level timestamps
+    - Intent classification
+    - Sentiment distribution
+
+    Ensures all sections are populated with rich content and the final
+    markdown report is comprehensive and well-structured. This represents
+    the ideal case where all provider features are available.
+    """
     result = _make_basic_result()
     result.summary = "Comprehensive discussion about project planning and execution."
     result.topics = {"planning": 5, "execution": 3, "quality": 2}
@@ -619,7 +643,27 @@ def test_complete_analysis_with_all_features(tmp_path):
 
 
 def test_analysis_handles_missing_optionals(tmp_path):
-    """Test that analyzer gracefully handles missing optional data."""
+    """
+    Integration test: Graceful handling of minimal transcription data.
+
+    Tests the analyzer's robustness when most optional fields are missing:
+    - No summary
+    - No topics
+    - No speakers
+    - No chapters
+    - No utterances
+    - No intents
+    - No sentiment
+
+    Verifies:
+    - All sections are still created with appropriate fallback messages
+    - No errors or crashes occur
+    - Output file is valid markdown
+    - Basic structure is maintained
+
+    This represents the worst-case scenario where only the transcript
+    text is available, testing defensive programming and graceful degradation.
+    """
     result = TranscriptionResult(
         transcript="Simple transcript without advanced features.",
         duration=30.0,
@@ -643,7 +687,20 @@ def test_analysis_handles_missing_optionals(tmp_path):
 
 
 def test_output_directory_creation(tmp_path):
-    """Test that output directory is created if it doesn't exist."""
+    """
+    Test automatic creation of nested output directories.
+
+    Verifies the analyzer creates the full directory path if it doesn't exist,
+    rather than failing when given a non-existent output location.
+
+    Test scenario:
+    - Specifies a deeply nested path: /output/analysis/reports/
+    - Path doesn't exist beforehand
+    - Analyzer creates all intermediate directories
+    - File is successfully saved at the specified location
+
+    This ensures robust file handling and prevents failures due to missing directories.
+    """
     result = _make_basic_result()
     analyzer = ConciseAnalyzer()
 

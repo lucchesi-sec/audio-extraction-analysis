@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in ffmpeg_core.py",
-  "description": "Review the documentation and comments in ./src/services/ffmpeg_core.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in test_config_refactoring.py",
+  "description": "Review the documentation and comments in ./tests/unit/test_config_refactoring.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "3ca4a87d-f2b3-468f-b0fd-0154e8297022",
+    "work_item_id": "9e94e5ad-fa71-4f79-b6b3-266d4c3f753e",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T19:08:35.253029",
+      "discovered_at": "2025-10-26T19:19:06.495362",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T20:03:30.835975",
+  "timestamp": "2025-10-26T20:04:37.148592",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

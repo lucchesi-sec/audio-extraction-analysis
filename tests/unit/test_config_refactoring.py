@@ -1,4 +1,18 @@
-"""Comprehensive tests for refactored configuration system."""
+"""Comprehensive tests for refactored configuration system.
+
+This test module validates the new modular configuration architecture that replaces
+the monolithic Config class. It ensures:
+
+1. Backward compatibility - Legacy Config class interface remains functional
+2. Core configuration modules - GlobalConfig, SecurityConfig, PerformanceConfig, UIConfig
+3. Provider-specific configs - Deepgram, Whisper, ElevenLabs, Parakeet
+4. Configuration validation - Multi-level validation system with auto-fix capabilities
+5. Advanced features - Overlays, rate limiting, resource tracking, sanitization
+
+The tests cover both functional correctness and integration between configuration
+components, ensuring the refactored system maintains all original capabilities while
+providing enhanced modularity and testability.
+"""
 
 import os
 import tempfile
@@ -27,15 +41,27 @@ class TestBackwardCompatibility:
     """Test backward compatibility with existing Config class."""
 
     def test_config_class_exists(self):
-        """Test that Config class still exists."""
+        """Test that Config class still exists for backward compatibility.
+
+        Ensures existing code using Config() continues to work after refactoring.
+        The Config class now acts as a facade over the modular configuration system.
+        """
         config = Config()
         assert config is not None
 
     def test_api_key_properties(self):
-        """Test API key properties work."""
+        """Test API key property access through backward-compatible interface.
+
+        Verifies that legacy code can still access API keys via Config properties.
+        API keys are mocked with provider-specific formats:
+        - Deepgram: 40+ character alphanumeric string
+        - ElevenLabs: 32+ character alphanumeric string
+        - Gemini: Starts with "AIza" prefix, 39+ characters total
+        """
         with patch.dict(
             os.environ,
             {
+                # Mock API keys matching provider-specific format requirements
                 "DEEPGRAM_API_KEY": "test_deepgram_key_1234567890abcdef1234567890abcdef12345678",
                 "ELEVENLABS_API_KEY": "test_elevenlabs_key_1234567890ab",
                 "GEMINI_API_KEY": "AIzaTestKey123456789012345678901234567",
@@ -43,45 +69,69 @@ class TestBackwardCompatibility:
         ):
             config = Config()
 
-            # These should return the mocked values (without validation)
+            # Verify API keys are accessible without validation errors
             assert config.DEEPGRAM_API_KEY is not None
             assert config.ELEVENLABS_API_KEY is not None
             assert config.GEMINI_API_KEY is not None
 
     def test_provider_settings(self):
-        """Test provider configuration properties."""
+        """Test provider configuration properties maintain default values.
+
+        Ensures backward compatibility for provider settings that existing code
+        may depend on. Validates that sensible defaults exist even without
+        explicit configuration.
+        """
         config = Config()
 
-        # Should have default values
+        # Verify default provider configuration
         assert config.DEFAULT_TRANSCRIPTION_PROVIDER == "deepgram"
         assert "deepgram" in config.AVAILABLE_PROVIDERS
         assert config.DEFAULT_LANGUAGE == "en"
-        assert config.MAX_FILE_SIZE > 0
+        assert config.MAX_FILE_SIZE > 0  # Must have a positive file size limit
 
     def test_performance_settings(self):
-        """Test performance configuration properties."""
+        """Test performance configuration properties for API resilience.
+
+        Validates retry and circuit breaker settings that ensure reliable API
+        communication. These settings are critical for handling transient failures
+        and preventing cascading failures in production.
+        """
         config = Config()
 
+        # Retry configuration must allow at least one retry attempt
         assert config.MAX_API_RETRIES >= 1
         assert config.API_RETRY_DELAY > 0
+        # Max delay must be >= initial delay for exponential backoff to work
         assert config.MAX_RETRY_DELAY >= config.API_RETRY_DELAY
+        # Circuit breaker threshold must be positive to trigger after failures
         assert config.CIRCUIT_BREAKER_FAILURE_THRESHOLD > 0
 
     def test_class_methods(self):
-        """Test backward compatible class methods."""
-        # Test is_configured
-        with patch.dict(os.environ, {"DEEPGRAM_API_KEY": "test_key"}):
-            assert Config.is_configured("deepgram") is False  # Invalid key format
+        """Test backward compatible class methods for provider and file validation.
 
-        # Test validate_file_extension
-        assert Config.validate_file_extension(Path("test.mp3")) is True
-        assert Config.validate_file_extension(Path("test.exe")) is False
+        Tests static/class methods that don't require Config instantiation.
+        These methods are commonly used for pre-flight checks in client code.
+        """
+        # Test is_configured - validates provider setup
+        with patch.dict(os.environ, {"DEEPGRAM_API_KEY": "test_key"}):
+            # Invalid key format (too short) should return False
+            assert Config.is_configured("deepgram") is False
+
+        # Test validate_file_extension - ensures supported audio formats
+        assert Config.validate_file_extension(Path("test.mp3")) is True  # Supported audio format
+        assert Config.validate_file_extension(Path("test.exe")) is False  # Unsupported format
 
     def test_get_provider_config(self):
-        """Test getting provider configuration."""
+        """Test getting provider-specific configuration dictionary.
+
+        Validates that provider configs contain all required operational parameters.
+        This is used by provider clients to initialize with correct settings.
+        Uses minimum valid API key length (40 chars) for Deepgram.
+        """
         with patch.dict(os.environ, {"DEEPGRAM_API_KEY": "a" * 40}):
             config = Config.get_provider_config("deepgram")
 
+            # Verify all essential provider settings are present
             assert "max_retries" in config
             assert "timeout" in config
             assert "max_file_size" in config
@@ -91,10 +141,15 @@ class TestGlobalConfig:
     """Test global configuration module."""
 
     def test_singleton_pattern(self):
-        """Test singleton implementation."""
+        """Test singleton implementation ensures single configuration instance.
+
+        GlobalConfig uses singleton pattern to maintain consistent configuration
+        state across the application. Multiple calls to get_global_config() must
+        return the same instance to prevent configuration drift.
+        """
         config1 = get_global_config()
         config2 = get_global_config()
-        assert config1 is config2
+        assert config1 is config2  # Must be the exact same object
 
     def test_environment_loading(self):
         """Test environment variable loading."""
@@ -117,7 +172,12 @@ class TestGlobalConfig:
                 assert Path(f"{tmpdir}/cache").exists()
 
     def test_config_overlay(self):
-        """Test configuration overlay system."""
+        """Test configuration overlay system with priority resolution.
+
+        The overlay system allows configuration from multiple sources (defaults,
+        files, CLI args) with automatic priority-based resolution. Higher priority
+        sources override lower ones: CLI > FILE > DEFAULTS.
+        """
         config = get_global_config()
 
         # Set overlay at different priorities
@@ -125,7 +185,7 @@ class TestGlobalConfig:
         config.set_overlay(ConfigPriority.FILE, {"test_key": "file"})
         config.set_overlay(ConfigPriority.CLI, {"test_key": "cli"})
 
-        # CLI should win
+        # CLI priority should override all others
         assert config.get_value("test_key") == "cli"
 
     def test_validation(self):
