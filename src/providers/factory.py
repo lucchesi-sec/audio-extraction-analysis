@@ -1,4 +1,23 @@
-"""Factory for creating transcription service providers."""
+"""Factory for creating and managing transcription service providers.
+
+This module implements the Factory Pattern for transcription providers, providing:
+- Provider registration and discovery
+- Automatic provider selection based on capabilities and health
+- Configuration validation and health checking
+- File size constraint validation
+
+The factory automatically registers available providers on module import and
+supports both synchronous and asynchronous operations.
+
+Example:
+    >>> # Auto-select and create a provider
+    >>> provider_name = TranscriptionProviderFactory.auto_select_provider()
+    >>> provider = TranscriptionProviderFactory.create_provider(provider_name)
+    >>> result = await provider.transcribe(audio_file_path)
+
+    >>> # Get status of all providers
+    >>> status = TranscriptionProviderFactory.get_provider_status()
+"""
 
 from __future__ import annotations
 
@@ -15,9 +34,23 @@ logger = logging.getLogger(__name__)
 
 
 class TranscriptionProviderFactory:
-    """Factory class for creating and managing transcription service providers."""
+    """Factory class for creating and managing transcription service providers.
 
-    # Registry of available providers
+    This factory provides centralized management of transcription providers including:
+    - Provider registration and lifecycle management
+    - Intelligent auto-selection based on file size, features, and health
+    - Configuration validation and health monitoring
+    - Thread-safe class-level operations
+
+    All methods are class methods, allowing the factory to be used without instantiation.
+    The provider registry is shared across all access points.
+
+    Thread Safety:
+        Class methods are thread-safe for reading operations. Provider registration
+        should only be performed during module initialization to avoid race conditions.
+    """
+
+    # Registry of available providers: maps provider names to their implementation classes
     _providers: Dict[str, Type[BaseTranscriptionProvider]] = {}
 
     @classmethod
@@ -42,22 +75,34 @@ class TranscriptionProviderFactory:
 
     @classmethod
     def get_configured_providers(cls) -> List[str]:
-        """Get list of providers that have valid API keys configured.
+        """Get list of providers that have valid API keys or dependencies configured.
+
+        This method checks both API-based providers (requiring API keys) and
+        local providers (requiring Python packages):
+
+        - Deepgram: Requires DEEPGRAM_API_KEY environment variable
+        - ElevenLabs: Requires ELEVENLABS_API_KEY environment variable
+        - Whisper: Requires torch and whisper packages (no API key needed)
+        - Parakeet: Requires nemo.collections.asr package (no API key needed)
 
         Returns:
-            List of provider names that are properly configured
+            List of provider names that are properly configured and ready to use
+
+        Note:
+            This checks configuration only, not provider health or availability.
+            Use check_provider_health() for runtime health validation.
         """
         configured = []
 
-        # Check Deepgram
+        # Check API-based providers (require authentication keys)
         if Config.DEEPGRAM_API_KEY:
             configured.append("deepgram")
 
-        # Check ElevenLabs
         if Config.ELEVENLABS_API_KEY:
             configured.append("elevenlabs")
 
-        # Check Whisper (always available if dependencies installed)
+        # Check local providers (require dependencies but no API keys)
+        # Whisper: OpenAI's local speech recognition model
         try:
             import torch
             import whisper
@@ -66,7 +111,7 @@ class TranscriptionProviderFactory:
         except (ImportError, Exception):
             pass
 
-        # Check Parakeet (always available if dependencies installed)
+        # Parakeet: NVIDIA NeMo's local speech recognition model
         try:
             import nemo.collections.asr as nemo_asr
 
@@ -181,20 +226,46 @@ class TranscriptionProviderFactory:
         retry_config: Optional[RetryConfig] = None,
         run_health_check: bool = True,
     ) -> BaseTranscriptionProvider:
-        """Create a transcription provider instance.
+        """Create a transcription provider instance with validation and health checking.
+
+        This method creates a provider, validates its configuration, and optionally
+        performs a health check. Default configurations are applied if not provided.
+
+        Supported Providers:
+            - 'deepgram': Deepgram cloud API (requires DEEPGRAM_API_KEY)
+            - 'elevenlabs': ElevenLabs cloud API (requires ELEVENLABS_API_KEY)
+            - 'whisper': OpenAI Whisper local model (requires torch, whisper)
+            - 'parakeet': NVIDIA NeMo Parakeet local model (requires nemo)
 
         Args:
-            provider_name: Name of the provider to create ('deepgram', 'elevenlabs')
-            api_key: Optional API key. If None, uses configuration
-            circuit_config: Optional circuit breaker configuration
-            retry_config: Optional retry configuration
-            run_health_check: Whether to run health check after creation
+            provider_name: Name of the provider to create. Use get_available_providers()
+                to see registered providers.
+            api_key: Optional API key override. If None, reads from Config (environment).
+                Not used for local providers (whisper, parakeet).
+            circuit_config: Optional circuit breaker configuration. If None, uses defaults
+                from Config (failure_threshold, recovery_timeout).
+            retry_config: Optional retry configuration. If None, uses defaults from Config
+                (max_retries, retry_delay, exponential backoff settings).
+            run_health_check: Whether to run health check after creation. Health check
+                failures are logged but do not prevent provider creation.
 
         Returns:
-            Provider instance
+            Fully configured and validated provider instance ready for transcription
 
         Raises:
-            ValueError: If provider is not registered or not configured
+            ValueError: If provider name is not registered, configuration is invalid,
+                or required dependencies are missing
+            ImportError: If provider module cannot be imported
+
+        Example:
+            >>> # Create with defaults
+            >>> provider = factory.create_provider('deepgram')
+            >>> # Create with custom configs
+            >>> provider = factory.create_provider(
+            ...     'deepgram',
+            ...     circuit_config=CircuitBreakerConfig(failure_threshold=5),
+            ...     run_health_check=False
+            ... )
         """
         if provider_name not in cls._providers:
             available = ", ".join(cls.get_available_providers())
@@ -239,18 +310,37 @@ class TranscriptionProviderFactory:
         preferred_features: Optional[List[str]] = None,
         include_health_check: bool = True,
     ) -> str:
-        """Automatically select the best available provider.
+        """Automatically select the best available provider using intelligent heuristics.
+
+        Selection Algorithm:
+            1. Filter to configured providers (have API keys or dependencies)
+            2. If health checking enabled, filter to healthy providers only
+            3. If only one provider remains, return it
+            4. If audio file provided, check file size constraints:
+               - Files >50MB: Must use Deepgram (ElevenLabs 50MB limit)
+            5. If feature requirements specified, select provider with most matching features
+            6. Otherwise, use default priority: Deepgram > ElevenLabs > Whisper > Parakeet
+            7. Fallback: Return first available configured provider
 
         Args:
-            audio_file_path: Optional path to audio file for size-based selection
-            preferred_features: Optional list of required features
-            include_health_check: Whether to consider health status in selection
+            audio_file_path: Optional path to audio file for size-based selection.
+                If provided and file >50MB, Deepgram will be selected if available.
+            preferred_features: Optional list of required features (e.g., ['timestamps', 'diarization']).
+                Provider with most matching features will be selected.
+            include_health_check: Whether to filter out unhealthy providers. Defaults to True.
+                If all providers fail health check, falls back to all configured providers.
 
         Returns:
-            Name of the selected provider
+            Name of the selected provider (e.g., 'deepgram', 'whisper')
 
         Raises:
-            ValueError: If no providers are configured
+            ValueError: If no providers are configured or file size exceeds all provider limits
+
+        Example:
+            >>> # Auto-select for large file
+            >>> provider = factory.auto_select_provider(Path("large_audio.mp3"))
+            >>> # Auto-select with feature requirements
+            >>> provider = factory.auto_select_provider(preferred_features=['diarization'])
         """
         configured_providers = cls.get_configured_providers()
 
@@ -341,36 +431,57 @@ class TranscriptionProviderFactory:
 
     @classmethod
     def validate_provider_for_file(cls, provider_name: str, audio_file_path: Path) -> bool:
-        """Validate that a provider can handle the given audio file.
+        """Validate that a provider can handle the given audio file based on size constraints.
+
+        This method checks provider-specific file size limits to ensure the audio file
+        can be processed. Different providers have different constraints:
+
+        File Size Limits by Provider:
+            - ElevenLabs: 50MB maximum (API limitation)
+            - Deepgram: ~2GB maximum (conservative estimate)
+            - Whisper: Limited by Config.MAX_FILE_SIZE (local processing)
+            - Parakeet: Limited by Config.MAX_FILE_SIZE (local processing)
 
         Args:
-            provider_name: Name of the provider
-            audio_file_path: Path to audio file
+            provider_name: Name of the provider to validate against
+                (e.g., 'deepgram', 'elevenlabs', 'whisper', 'parakeet')
+            audio_file_path: Path to the audio file to validate
 
         Returns:
-            True if provider can handle the file, False otherwise
+            True if the provider can handle the file size, False otherwise.
+            Also returns False if the file does not exist.
+
+        Note:
+            This only validates file size constraints, not audio format compatibility.
+            Validation warnings are logged when limits are exceeded.
+
+        Example:
+            >>> if factory.validate_provider_for_file('elevenlabs', Path('large.mp3')):
+            ...     provider = factory.create_provider('elevenlabs')
+            ... else:
+            ...     provider = factory.create_provider('deepgram')  # Fallback
         """
         if not audio_file_path.exists():
             return False
 
         file_size_mb = audio_file_path.stat().st_size / (1024 * 1024)
 
-        # Check provider-specific constraints
+        # Check provider-specific file size constraints
         if provider_name == "elevenlabs":
-            if file_size_mb > 50:  # ElevenLabs 50MB limit
+            if file_size_mb > 50:  # ElevenLabs API 50MB hard limit
                 logger.warning(f"File size {file_size_mb:.1f}MB exceeds ElevenLabs 50MB limit")
                 return False
         elif provider_name == "deepgram":
-            if file_size_mb > 2000:  # Deepgram ~2GB limit (conservative)
+            if file_size_mb > 2000:  # Deepgram ~2GB limit (conservative estimate)
                 logger.warning(f"File size {file_size_mb:.1f}MB exceeds Deepgram limit")
                 return False
         elif provider_name == "whisper":
-            # Whisper can handle large files, but check global file size limit
+            # Whisper local model: check against global file size configuration
             if file_size_mb > (Config.MAX_FILE_SIZE / (1024 * 1024)):
                 logger.warning(f"File size {file_size_mb:.1f}MB exceeds global file size limit")
                 return False
         elif provider_name == "parakeet":
-            # Parakeet can handle large files, but check global file size limit
+            # Parakeet local model: check against global file size configuration
             if file_size_mb > (Config.MAX_FILE_SIZE / (1024 * 1024)):
                 logger.warning(f"File size {file_size_mb:.1f}MB exceeds global file size limit")
                 return False
@@ -418,24 +529,41 @@ class TranscriptionProviderFactory:
     def check_provider_health_sync(
         cls, provider_name: str, api_key: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Synchronous version of provider health check.
+        """Synchronous wrapper for async provider health check.
+
+        This method handles event loop management for synchronous contexts,
+        automatically creating a new event loop if one doesn't exist.
+
+        Event Loop Handling:
+            - Attempts to use existing event loop if available
+            - Creates new event loop if none exists (e.g., in threaded contexts)
+            - Closes the loop only if it's not currently running (prevents interference)
 
         Args:
-            provider_name: Name of the provider to check
-            api_key: Optional API key
+            provider_name: Name of the provider to check (e.g., 'deepgram', 'whisper')
+            api_key: Optional API key override. If None, uses configuration.
 
         Returns:
-            Dictionary containing health check results
+            Dictionary containing health check results with keys:
+                - healthy: bool indicating if provider is operational
+                - status: str status message
+                - response_time_ms: int response time in milliseconds
+                - details: dict with additional information
+
+        Note:
+            Prefer check_provider_health() (async) when in async context for better performance.
         """
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
+            # No event loop in current thread, create a new one
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
         try:
             return loop.run_until_complete(cls.check_provider_health(provider_name, api_key))
         finally:
+            # Only close if loop is not running (avoid breaking existing async contexts)
             if not loop.is_running():
                 loop.close()
 
@@ -469,7 +597,27 @@ class TranscriptionProviderFactory:
 
 # Initialize the factory with default providers
 def _initialize_factory():
-    """Initialize factory with available providers."""
+    """Initialize factory with all available transcription providers.
+
+    This function attempts to import and register each supported provider.
+    Import failures are logged as warnings but do not prevent other providers
+    from being registered. This allows the system to work with partial provider
+    availability.
+
+    Registered Providers:
+        - Deepgram: Cloud-based API with advanced features
+        - ElevenLabs: Cloud-based API with high accuracy
+        - Whisper: OpenAI's local model (requires torch, whisper packages)
+        - Parakeet: NVIDIA NeMo's local model (requires nemo package)
+
+    Note:
+        This function is automatically called on module import. Manual invocation
+        is not necessary and may cause duplicate registration warnings.
+
+    Raises:
+        Does not raise exceptions; all import errors are caught and logged.
+    """
+    # Cloud-based providers (require API keys)
     try:
         from .deepgram import DeepgramTranscriber
 
@@ -486,6 +634,7 @@ def _initialize_factory():
     except ImportError as e:
         logger.warning(f"ElevenLabs provider not available: {e}")
 
+    # Local model providers (require ML frameworks)
     try:
         from .whisper import WhisperTranscriber
 
@@ -503,5 +652,6 @@ def _initialize_factory():
         logger.warning(f"Parakeet provider not available: {e}")
 
 
-# Initialize providers when module is imported
+# Auto-initialize: Register all available providers when module is imported
+# This ensures the factory is ready to use without manual setup
 _initialize_factory()
