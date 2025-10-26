@@ -1,4 +1,8 @@
-"""Data models for the audio extraction analysis system."""
+"""Data models for the audio extraction analysis system.
+
+This module provides data structures for representing transcription results,
+including speaker diarization, chapter segmentation, and utterance tracking.
+"""
 
 from .transcription import (
     TranscriptionChapter,

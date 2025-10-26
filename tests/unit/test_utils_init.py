@@ -422,7 +422,7 @@ class TestUtilsPackage:
         assert config.max_delay == 1.0
 
         # max_delay less than base_delay should raise ValueError
-        with pytest.raises(ValueError, match="max_delay must be greater than or equal to base_delay"):
+        with pytest.raises(ValueError, match="max_delay must be >= base_delay"):
             RetryConfig(base_delay=10.0, max_delay=5.0)
 
     def test_retry_config_validation_exponential_base(self):
@@ -434,11 +434,28 @@ class TestUtilsPackage:
         assert config.exponential_base == 1.5
 
         # exponential_base < 1 should raise ValueError
-        with pytest.raises(ValueError, match="exponential_base must be at least 1.0"):
+        with pytest.raises(ValueError, match="exponential_base must be >= 1"):
             RetryConfig(exponential_base=0.5)
 
-        with pytest.raises(ValueError, match="exponential_base must be at least 1.0"):
+        with pytest.raises(ValueError, match="exponential_base must be >= 1"):
             RetryConfig(exponential_base=0.0)
+
+    def test_retry_config_validation_practical_limits(self):
+        """Test that RetryConfig enforces practical limits."""
+        from src.utils import RetryConfig
+
+        # Valid practical limits
+        config = RetryConfig(max_attempts=10, max_delay=300.0)
+        assert config.max_attempts == 10
+        assert config.max_delay == 300.0
+
+        # max_attempts > 10 should raise ValueError
+        with pytest.raises(ValueError, match="max_attempts should not exceed 10"):
+            RetryConfig(max_attempts=11)
+
+        # max_delay > 300 should raise ValueError
+        with pytest.raises(ValueError, match="max_delay should not exceed 300 seconds"):
+            RetryConfig(max_delay=301.0)
 
     def test_type_annotations_preserved(self):
         """Test that type annotations are preserved when re-exporting."""
@@ -460,23 +477,30 @@ class TestUtilsPackage:
         """Test that calculate_delay function works correctly when imported from src.utils."""
         from src.utils import calculate_delay
 
-        # Test basic exponential backoff
+        # Test basic exponential backoff (attempt 0 should be 0)
+        delay0 = calculate_delay(attempt=0, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=False)
+        assert delay0 == 0.0
+
+        # Test basic exponential backoff (formula: base_delay * exponential_base^(attempt-1))
         delay1 = calculate_delay(attempt=1, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=False)
-        assert delay1 == 2.0  # 1.0 * 2^1
+        assert delay1 == 1.0  # 1.0 * 2^0
 
         delay2 = calculate_delay(attempt=2, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=False)
-        assert delay2 == 4.0  # 1.0 * 2^2
+        assert delay2 == 2.0  # 1.0 * 2^1
+
+        delay3 = calculate_delay(attempt=3, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=False)
+        assert delay3 == 4.0  # 1.0 * 2^2
 
         # Test max_delay cap
         delay_max = calculate_delay(attempt=10, base_delay=1.0, max_delay=10.0, exponential_base=2.0, jitter=False)
         assert delay_max == 10.0  # Capped at max_delay
 
-        # Test with jitter (result should be different each time and within bounds)
+        # Test with jitter (result should be within bounds)
         delay_jitter1 = calculate_delay(attempt=2, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
         delay_jitter2 = calculate_delay(attempt=2, base_delay=1.0, max_delay=60.0, exponential_base=2.0, jitter=True)
-        assert 0 <= delay_jitter1 <= 4.0
-        assert 0 <= delay_jitter2 <= 4.0
-        # With high probability, jittered values should differ (not a guarantee but very likely)
+        # With 25% jitter, delay2 = 2.0, so jitter range is ±0.5
+        assert 0 <= delay_jitter1 <= 2.5
+        assert 0 <= delay_jitter2 <= 2.5
 
     def test_is_retriable_exception_functionality(self):
         """Test that is_retriable_exception works correctly when imported from src.utils."""
@@ -484,17 +508,17 @@ class TestUtilsPackage:
 
         # Test with default retriable exceptions
         config = RetryConfig()
-        assert is_retriable_exception(ConnectionError("test"), config) is True
-        assert is_retriable_exception(TimeoutError("test"), config) is True
-        assert is_retriable_exception(OSError("test"), config) is True
-        assert is_retriable_exception(ValueError("test"), config) is False
-        assert is_retriable_exception(RuntimeError("test"), config) is False
+        assert is_retriable_exception(ConnectionError("test"), config.retriable_exceptions) is True
+        assert is_retriable_exception(TimeoutError("test"), config.retriable_exceptions) is True
+        assert is_retriable_exception(OSError("test"), config.retriable_exceptions) is True
+        assert is_retriable_exception(ValueError("test"), config.retriable_exceptions) is False
+        assert is_retriable_exception(RuntimeError("test"), config.retriable_exceptions) is False
 
         # Test with custom retriable exceptions
         custom_config = RetryConfig(retriable_exceptions=(ValueError, KeyError))
-        assert is_retriable_exception(ValueError("test"), custom_config) is True
-        assert is_retriable_exception(KeyError("test"), custom_config) is True
-        assert is_retriable_exception(ConnectionError("test"), custom_config) is False
+        assert is_retriable_exception(ValueError("test"), custom_config.retriable_exceptions) is True
+        assert is_retriable_exception(KeyError("test"), custom_config.retriable_exceptions) is True
+        assert is_retriable_exception(ConnectionError("test"), custom_config.retriable_exceptions) is False
 
     def test_retry_sync_decorator_functionality(self):
         """Test that retry_sync decorator works when imported from src.utils."""
