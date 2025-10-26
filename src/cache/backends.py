@@ -242,57 +242,97 @@ class DiskCache(CacheBackend):
         """
         with self._lock:
             try:
-                conn = self._get_connection()
-                cursor = conn.cursor()
-
-                cursor.execute(
-                    """
-                    SELECT value, size, created_at, accessed_at,
-                           access_count, ttl, metadata
-                    FROM cache_entries
-                    WHERE key = ?
-                """,
-                    (key,),
-                )
-
-                row = cursor.fetchone()
+                row = self._query_entry(key)
                 if row:
-                    # Update access time and count
-                    cursor.execute(
-                        """
-                        UPDATE cache_entries
-                        SET accessed_at = ?, access_count = access_count + 1
-                        WHERE key = ?
-                    """,
-                        (time.time(), key),
-                    )
-                    conn.commit()
-
-                    # Deserialize entry using safe JSON
-                    try:
-                        entry_dict = json.loads(row[0].decode('utf-8'))
-                        # Import CacheEntry - handle circular import properly
-                        try:
-                            from .transcription_cache import CacheEntry
-                        except ImportError:
-                            # If circular import, use the already imported class
-                            CacheEntry = globals().get('CacheEntry')
-                            if not CacheEntry:
-                                raise ImportError("CacheEntry not available")
-                        entry_data = CacheEntry.from_dict(entry_dict)
-                        return entry_data
-                    except (json.JSONDecodeError, UnicodeDecodeError, KeyError, ImportError) as e:
-                        logger.error(f"Failed to deserialize cache entry: {e}")
-                        # Clean up corrupted entry
-                        cursor.execute("DELETE FROM cache_entries WHERE key = ?", (key,))
-                        conn.commit()
-                        return None
-
+                    self._update_access_stats(key)
+                    return self._deserialize_entry(row, key)
                 return None
 
             except Exception as e:
                 logger.error(f"Failed to get from disk cache: {e}")
                 return None
+
+    def _query_entry(self, key: str) -> Optional[tuple]:
+        """Query cache entry from database.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Database row or None
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT value, size, created_at, accessed_at,
+                   access_count, ttl, metadata
+            FROM cache_entries
+            WHERE key = ?
+        """,
+            (key,),
+        )
+
+        return cursor.fetchone()
+
+    def _update_access_stats(self, key: str):
+        """Update access time and count for an entry.
+
+        Args:
+            key: Cache key
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE cache_entries
+            SET accessed_at = ?, access_count = access_count + 1
+            WHERE key = ?
+        """,
+            (time.time(), key),
+        )
+        conn.commit()
+
+    def _deserialize_entry(self, row: tuple, key: str) -> Optional[CacheEntry]:
+        """Deserialize cache entry from database row.
+
+        Args:
+            row: Database row containing serialized entry
+            key: Cache key (used for cleanup on error)
+
+        Returns:
+            Deserialized cache entry or None
+        """
+        try:
+            entry_dict = json.loads(row[0].decode('utf-8'))
+            # Import CacheEntry - handle circular import properly
+            try:
+                from .transcription_cache import CacheEntry
+            except ImportError:
+                # If circular import, use the already imported class
+                CacheEntry = globals().get('CacheEntry')
+                if not CacheEntry:
+                    raise ImportError("CacheEntry not available")
+            entry_data = CacheEntry.from_dict(entry_dict)
+            return entry_data
+        except (json.JSONDecodeError, UnicodeDecodeError, KeyError, ImportError) as e:
+            logger.error(f"Failed to deserialize cache entry: {e}")
+            # Clean up corrupted entry
+            self._delete_corrupted_entry(key)
+            return None
+
+    def _delete_corrupted_entry(self, key: str):
+        """Delete corrupted cache entry.
+
+        Args:
+            key: Cache key
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM cache_entries WHERE key = ?", (key,))
+        conn.commit()
 
     def put(self, key: str, entry: CacheEntry) -> bool:
         """Put entry on disk.

@@ -754,6 +754,84 @@ class TranscriptionCache:
         # Rough estimate for other types
         return sys.getsizeof(value)
 
+    def _prepare_cache_value(self, value: Any) -> Any:
+        """Prepare value for caching by applying compression if enabled.
+
+        Args:
+            value: Original value to cache
+
+        Returns:
+            Compressed or original value
+        """
+        return self._compress(value) if self.enable_compression else value
+
+    def _validate_entry_size(self, size: int) -> bool:
+        """Validate that entry size is within cache limits.
+
+        Args:
+            size: Entry size in bytes
+
+        Returns:
+            True if size is acceptable, False otherwise
+        """
+        if size > self.max_size_bytes:
+            logger.warning(f"Value too large to cache: {size} > {self.max_size_bytes}")
+            return False
+        return True
+
+    def _create_cache_entry(
+        self,
+        cache_key: CacheKey,
+        cached_value: Any,
+        size: int,
+        ttl: Optional[int],
+        metadata: Optional[Dict[str, Any]],
+    ) -> CacheEntry:
+        """Create cache entry with metadata.
+
+        Args:
+            cache_key: Cache key
+            cached_value: Prepared cache value
+            size: Entry size in bytes
+            ttl: TTL in seconds
+            metadata: Additional metadata
+
+        Returns:
+            CacheEntry instance
+        """
+        return CacheEntry(
+            key=cache_key,
+            value=cached_value,
+            size=size,
+            ttl=ttl or self.default_ttl,
+            metadata=metadata or {},
+        )
+
+    def _store_entry_in_backend(self, key_str: str, entry: CacheEntry, size: int) -> bool:
+        """Store entry in backend with eviction and stats tracking.
+
+        Args:
+            key_str: String representation of cache key
+            entry: Cache entry to store
+            size: Entry size in bytes
+
+        Returns:
+            True if stored successfully
+        """
+        with self._lock:
+            # Evict if necessary
+            self._evict_if_needed(size)
+
+            # Store in primary backend
+            success = self.backends[0].put(key_str, entry)
+
+            if success:
+                self.stats.entry_count += 1
+                self.stats.size_bytes += size
+                logger.debug(f"Cached {key_str} ({size} bytes)")
+
+            return success
+
     def get_stats(self) -> CacheStats:
         """Get cache statistics.
 

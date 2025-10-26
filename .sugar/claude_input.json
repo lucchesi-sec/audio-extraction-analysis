@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Refactor large functions in backends.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/cache/backends.py**\nIssue Type: long_function\nSeverity: medium\nLine: 216\n\n**Description:** Function 'get' is 61 lines long\n**Suggested Action:** Consider breaking down get into smaller functions",
+  "title": "Refactor large functions in transcription_cache.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/cache/transcription_cache.py**\nIssue Type: long_function\nSeverity: medium\nLine: 413\n\n**Description:** Function 'put' is 58 lines long\n**Suggested Action:** Consider breaking down put into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "20c4e7e3-1d58-4d87-a796-ff4039ad8150",
+    "work_item_id": "ffc71587-6825-4ad6-bbcf-e9c22f249827",
     "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
@@ -17,15 +17,15 @@
       "quality_issue": {
         "type": "long_function",
         "severity": "medium",
-        "line": 216,
-        "description": "Function 'get' is 61 lines long",
-        "suggestion": "Consider breaking down get into smaller functions"
+        "line": 413,
+        "description": "Function 'put' is 58 lines long",
+        "suggestion": "Consider breaking down put into smaller functions"
       },
-      "discovered_at": "2025-10-26T17:12:22.550196",
+      "discovered_at": "2025-10-26T17:12:22.558607",
       "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T18:24:14.245987",
+  "timestamp": "2025-10-26T18:24:41.475476",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
