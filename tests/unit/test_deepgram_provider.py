@@ -1,7 +1,7 @@
 """Tests for Deepgram Nova 3 transcription provider."""
 
 from pathlib import Path
-from unittest.mock import Mock, patch, mock_open, MagicMock
+from unittest.mock import Mock, patch, MagicMock
 import io
 
 import pytest
@@ -10,14 +10,45 @@ from src.models.transcription import TranscriptionResult
 from src.providers.deepgram import DeepgramTranscriber
 
 
+# Test constants
+TEST_API_KEY = 'test_api_key'
+TEST_AUDIO_PATH = '/tmp/test_audio.mp3'
+TEST_MIMETYPE = 'audio/mp3'
+TEST_LANGUAGE = 'en'
+
+
 class TestDeepgramTranscriber:
     """Test Deepgram transcription provider functionality."""
 
     @pytest.fixture
     def deepgram_transcriber(self):
         """Create a DeepgramTranscriber instance for testing."""
-        with patch.dict('os.environ', {'DEEPGRAM_API_KEY': 'test_api_key'}):
-            return DeepgramTranscriber(api_key='test_api_key')
+        with patch.dict('os.environ', {'DEEPGRAM_API_KEY': TEST_API_KEY}):
+            return DeepgramTranscriber(api_key=TEST_API_KEY)
+
+    @pytest.fixture
+    def mock_deepgram_response(self):
+        """Create a standard mock Deepgram API response."""
+        mock_response = Mock()
+        mock_response.results.channels = [Mock()]
+        mock_response.results.channels[0].alternatives = [Mock()]
+        mock_response.results.channels[0].alternatives[0].transcript = "Test transcript"
+        mock_response.metadata.duration = 10.0
+        # Set optional attributes to None to prevent AttributeError
+        mock_response.results.summary = None
+        mock_response.results.topics = None
+        mock_response.results.intents = None
+        mock_response.results.sentiments = None
+        mock_response.results.utterances = None
+        return mock_response
+
+    @pytest.fixture
+    def mock_file_handle(self):
+        """Create a mock file handle for testing."""
+        mock_file = MagicMock(spec=io.BufferedReader)
+        mock_file.__enter__ = Mock(return_value=mock_file)
+        mock_file.__exit__ = Mock(return_value=False)
+        return mock_file
 
     def test_validate_configuration_with_api_key(self, deepgram_transcriber):
         """Test configuration validation when API key is provided."""
@@ -36,26 +67,29 @@ class TestDeepgramTranscriber:
     def test_get_supported_features(self, deepgram_transcriber):
         """Test getting supported features."""
         features = deepgram_transcriber.get_supported_features()
-        assert "speaker_diarization" in features
-        assert "topic_detection" in features
-        assert "intent_analysis" in features
-        assert "sentiment_analysis" in features
-        assert "timestamps" in features
-        assert "summarization" in features
-        assert "language_detection" in features
+        expected_features = {
+            "speaker_diarization",
+            "topic_detection",
+            "intent_analysis",
+            "sentiment_analysis",
+            "timestamps",
+            "summarization",
+            "language_detection"
+        }
+        assert expected_features.issubset(features), \
+            f"Missing features: {expected_features - set(features)}"
 
-    def test_open_audio_file_returns_file_handle(self, deepgram_transcriber):
+    def test_open_audio_file_returns_file_handle(self, deepgram_transcriber, mock_file_handle):
         """Test that _open_audio_file returns a file handle, not bytes."""
-        test_file = Path("/tmp/test_audio.mp3")
-        mock_file = MagicMock(spec=io.BufferedReader)
+        test_file = Path(TEST_AUDIO_PATH)
 
-        with patch("builtins.open", return_value=mock_file) as mock_open_func:
+        with patch("builtins.open", return_value=mock_file_handle) as mock_open_func:
             result = deepgram_transcriber._open_audio_file(test_file)
 
             # Verify file was opened in binary read mode
             mock_open_func.assert_called_once_with(test_file, "rb")
             # Verify we got the file handle, not bytes
-            assert result == mock_file
+            assert result == mock_file_handle
 
     @pytest.mark.asyncio
     async def test_streaming_upload_uses_file_handle(self, deepgram_transcriber):
