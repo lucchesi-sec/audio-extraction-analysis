@@ -1,12 +1,12 @@
 {
-  "task_type": "documentation",
-  "title": "Review and improve documentation in eviction.py",
-  "description": "Review the documentation and comments in ./src/cache/eviction.py and improve clarity, completeness, and accuracy.",
+  "task_type": "refactor",
+  "title": "Code review and optimization for ffmpeg_utils.py",
+  "description": "Review ./src/utils/ffmpeg_utils.py for potential improvements: code clarity, performance, error handling, and best practices.",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "919634fd-9ac9-4248-90cf-d81cf4f4eaf6",
+    "work_item_id": "be3846e0-5152-46da-951d-a2bb284a3af3",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -15,12 +15,12 @@
     "previous_attempts": null,
     "session_context": {
       "maintenance_task": true,
-      "task_type": "documentation",
-      "discovered_at": "2025-10-26T18:08:41.532643",
+      "task_type": "refactor",
+      "discovered_at": "2025-10-26T18:08:41.532673",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:40:04.855319",
+  "timestamp": "2025-10-26T19:40:11.893433",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

@@ -1,7 +1,27 @@
-"""Eviction strategy helpers extracted from TranscriptionCache.
+"""Cache eviction strategy helpers for selecting victims during cache cleanup.
 
-These pure helper functions make eviction logic reusable and easier to test.
-Optimized to O(log n) or better using heap-based and OrderedDict operations.
+This module provides pure helper functions for implementing various cache eviction
+policies (LRU, LFU, TTL, Size-based, FIFO). These functions are designed to be
+reusable across different cache backend implementations and are optimized for
+performance using heap-based and OrderedDict operations.
+
+Each function selects a victim key from a set of candidates based on a specific
+eviction strategy. The victim is the cache entry that should be removed to make
+space for new entries.
+
+Performance characteristics:
+- LRU/FIFO: O(1) for OrderedDict backends, O(n) fallback
+- LFU/TTL/Size: O(n) optimized with single-pass algorithms
+- All functions avoid intermediate list construction for memory efficiency
+
+Backend Requirements:
+The backend parameter must implement a get(key) method that returns cache entries
+with the following attributes (depending on the eviction strategy):
+- accessed_at: datetime (for LRU)
+- access_count: int (for LFU)
+- ttl: Optional[float], age_seconds(): float (for TTL)
+- size: int (for Size-based)
+- created_at: datetime (for FIFO)
 """
 from __future__ import annotations
 
@@ -12,10 +32,26 @@ from typing import Optional, Set, Any
 
 
 def select_lru_victim(backend: Any, keys: Set[str]) -> str:
-    """Least Recently Used victim selection - O(1) for OrderedDict, O(n) fallback.
+    """Select the least recently used (LRU) cache entry as eviction victim.
 
-    For OrderedDict-based backends like InMemoryCache, this is O(1) since
-    move_to_end maintains LRU order. First key is the least recently used.
+    Chooses the cache entry with the oldest accessed_at timestamp. For
+    OrderedDict-based backends that maintain LRU order via move_to_end(),
+    this is O(1) as the first key is always the LRU entry. Otherwise falls
+    back to O(n) scan of all entries.
+
+    Args:
+        backend: Cache backend with get(key) method returning entries with
+            accessed_at attribute. For O(1) performance, backend should have
+            an OrderedDict _cache attribute maintained in LRU order.
+        keys: Set of candidate cache keys to consider for eviction. Must not
+            be empty.
+
+    Returns:
+        The key of the least recently used entry. If no valid entries are found,
+        returns an arbitrary key from the input set.
+
+    Complexity:
+        O(1) for OrderedDict backends, O(n) for generic backends.
     """
     # O(1) optimization for OrderedDict-based backends
     if hasattr(backend, '_cache') and isinstance(backend._cache, OrderedDict):
