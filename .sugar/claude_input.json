@@ -1,12 +1,12 @@
 {
   "task_type": "feature",
-  "title": "Stream large file uploads to Deepgram",
-  "description": "{\n  \"priority\": 3,\n  \"type\": \"refactor\",\n  \"context\": \"Deepgram loads entire audio file into RAM before upload. 2GB file = 2GB RAM allocation. Implement streaming upload if SDK supports it.\",\n  \"business_context\": \"Constant memory usage vs linear. Enables processing of arbitrarily large files.\",\n  \"technical_requirements\": [\n    \"Check if Deepgram SDK supports streaming upload\",\n    \"If yes: implement chunk-based streaming\",\n    \"If no: implement chunked upload with file-like object\",\n    \"Update src/providers/deepgram.py (lines 74-81)\",\n    \"Add tests with mock large file\"\n  ],\n  \"success_criteria\": [\n    \"Memory usage constant regardless of file size\",\n    \"Large file uploads successful\",\n    \"Tests verify streaming behavior\",\n    \"No regression on normal-sized files\"\n  ]\n}",
+  "title": "Add FFmpeg core tests (CRITICAL - untested production code)",
+  "description": "{\n  \"priority\": 5,\n  \"type\": \"test\",\n  \"context\": \"src/services/ffmpeg_core.py (57 LOC) has ZERO tests. Builds FFmpeg commands for all audio extraction. Wrong command = corrupted audio or silent failures.\",\n  \"business_context\": \"Critical path untested. High risk of command injection, path errors, quality issues.\",\n  \"technical_requirements\": [\n    \"Create tests/unit/test_ffmpeg_core.py\",\n    \"Test command construction for each quality preset (SPEECH, STANDARD, HIGH, COMPRESSED)\",\n    \"Test SPEECH quality two-step pipeline (extract + normalize)\",\n    \"Test path escaping with spaces/special chars\",\n    \"Test output path permission handling\",\n    \"Verify -y flag present (prevent hangs)\"\n  ],\n  \"success_criteria\": [\n    \"All quality presets tested\",\n    \"Path injection prevention verified\",\n    \"SPEECH normalization tested\",\n    \"100% coverage of ffmpeg_core.py\",\n    \"Tests prevent regression bugs\"\n  ]\n}",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "6a705826-c7ee-4670-acdc-47c584c9d0c7",
+    "work_item_id": "0c235668-be94-4aaa-a208-fd85bf614b8c",
     "source_type": "cli",
     "priority": 3,
     "attempts": 1,
@@ -15,30 +15,32 @@
     "previous_attempts": null,
     "session_context": {
       "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:45:33.123445",
+      "timestamp": "2025-10-26T16:46:00.030427",
       "parsed_description": {
-        "priority": 3,
-        "type": "refactor",
-        "context": "Deepgram loads entire audio file into RAM before upload. 2GB file = 2GB RAM allocation. Implement streaming upload if SDK supports it.",
-        "business_context": "Constant memory usage vs linear. Enables processing of arbitrarily large files.",
+        "priority": 5,
+        "type": "test",
+        "context": "src/services/ffmpeg_core.py (57 LOC) has ZERO tests. Builds FFmpeg commands for all audio extraction. Wrong command = corrupted audio or silent failures.",
+        "business_context": "Critical path untested. High risk of command injection, path errors, quality issues.",
         "technical_requirements": [
-          "Check if Deepgram SDK supports streaming upload",
-          "If yes: implement chunk-based streaming",
-          "If no: implement chunked upload with file-like object",
-          "Update src/providers/deepgram.py (lines 74-81)",
-          "Add tests with mock large file"
+          "Create tests/unit/test_ffmpeg_core.py",
+          "Test command construction for each quality preset (SPEECH, STANDARD, HIGH, COMPRESSED)",
+          "Test SPEECH quality two-step pipeline (extract + normalize)",
+          "Test path escaping with spaces/special chars",
+          "Test output path permission handling",
+          "Verify -y flag present (prevent hangs)"
         ],
         "success_criteria": [
-          "Memory usage constant regardless of file size",
-          "Large file uploads successful",
-          "Tests verify streaming behavior",
-          "No regression on normal-sized files"
+          "All quality presets tested",
+          "Path injection prevention verified",
+          "SPEECH normalization tested",
+          "100% coverage of ffmpeg_core.py",
+          "Tests prevent regression bugs"
         ]
       },
       "description_format": "json"
     }
   },
-  "timestamp": "2025-10-26T17:27:31.728820",
+  "timestamp": "2025-10-26T17:32:20.482746",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
