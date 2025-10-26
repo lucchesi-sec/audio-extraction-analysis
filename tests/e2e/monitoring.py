@@ -446,39 +446,115 @@ class TestMetricsCollector:
 
 
 class ReportGenerator:
-    """Generates various types of test reports."""
-    
+    """
+    Generates test execution reports in multiple formats.
+
+    Creates comprehensive test reports from collected metrics data,
+    supporting HTML, JSON, and Markdown output formats. Reports can
+    cover individual test suites or provide an overview of all suites.
+
+    The report generator integrates with TestMetricsCollector to retrieve
+    historical data and trend analysis, producing formatted reports suitable
+    for different audiences and use cases.
+
+    Attributes:
+        metrics_collector: TestMetricsCollector instance for data access
+        logger: Logger instance for this class
+
+    Example:
+        >>> collector = TestMetricsCollector(Path("metrics.db"))
+        >>> generator = ReportGenerator(collector)
+        >>> generator.generate_html_report(Path("report.html"), "auth_tests")
+        >>> generator.generate_json_report(Path("report.json"))
+    """
+
     def __init__(self, metrics_collector: TestMetricsCollector):
-        """Initialize report generator."""
+        """
+        Initialize report generator with metrics collector.
+
+        Args:
+            metrics_collector: TestMetricsCollector instance to retrieve
+                metrics data from
+        """
         self.metrics_collector = metrics_collector
         self.logger = logging.getLogger(__name__)
     
     def generate_html_report(self, output_path: Path, suite_name: Optional[str] = None):
-        """Generate HTML report with charts and metrics."""
+        """
+        Generate an HTML report with charts and metrics visualization.
+
+        Creates a styled HTML report suitable for viewing in web browsers,
+        including metric cards, trend indicators, and placeholder sections
+        for future chart integration (e.g., Chart.js).
+
+        Args:
+            output_path: Path where HTML report will be saved
+            suite_name: Optional suite name for single-suite report.
+                If None, generates overview report for all suites.
+
+        Note:
+            - Single-suite reports include 30-day trend analysis
+            - Overview reports show summary across all suites
+            - HTML includes inline CSS styling for standalone viewing
+        """
         html_content = self._build_html_report(suite_name)
-        
+
         with open(output_path, 'w') as f:
             f.write(html_content)
-        
+
         self.logger.info(f"HTML report generated: {output_path}")
-    
+
     def generate_json_report(self, output_path: Path, suite_name: Optional[str] = None) -> Dict:
-        """Generate JSON report with metrics data."""
+        """
+        Generate a JSON report for programmatic consumption.
+
+        Creates a structured JSON report suitable for API integration,
+        dashboards, or further processing by other tools.
+
+        Args:
+            output_path: Path where JSON report will be saved
+            suite_name: Optional suite name for single-suite report.
+                If None, generates overview report for all suites.
+
+        Returns:
+            Dictionary containing the report data that was written to file
+
+        Note:
+            - JSON is formatted with 2-space indentation for readability
+            - Single-suite reports include full 30-day history and trends
+            - Overview reports include last 7 days for all suites
+        """
         report_data = self._build_report_data(suite_name)
-        
+
         with open(output_path, 'w') as f:
             json.dump(report_data, f, indent=2)
-        
+
         self.logger.info(f"JSON report generated: {output_path}")
         return report_data
-    
+
     def generate_markdown_report(self, output_path: Path, suite_name: Optional[str] = None):
-        """Generate Markdown report for documentation."""
+        """
+        Generate a Markdown report for documentation and README files.
+
+        Creates a formatted Markdown report suitable for version control,
+        GitHub/GitLab READMEs, or documentation sites. Includes emoji
+        indicators for visual scanning.
+
+        Args:
+            output_path: Path where Markdown report will be saved
+            suite_name: Optional suite name for single-suite report.
+                If None, generates overview report for all suites.
+
+        Note:
+            - Uses emoji indicators (✅, ❌, ⚠️) for quick status visibility
+            - Includes tables for suite overviews
+            - Adds actionable recommendations based on metrics
+        """
         markdown_content = self._build_markdown_report(suite_name)
-        
+
         with open(output_path, 'w') as f:
             f.write(markdown_content)
-        
+
         self.logger.info(f"Markdown report generated: {output_path}")
     
     def _build_report_data(self, suite_name: Optional[str] = None) -> Dict:
@@ -836,18 +912,65 @@ class ReportGenerator:
 
 
 class AlertSystem:
-    """Alert system for test failures and performance degradation."""
-    
+    """
+    Automated alert system for test failures and performance degradation.
+
+    Monitors test metrics against predefined thresholds and triggers alerts
+    when critical conditions are detected. Provides integration points for
+    various notification channels (Slack, email, PagerDuty, etc.).
+
+    Alert Thresholds:
+        Success Rate:
+            - Critical: < 80%
+            - Warning: < 95%
+        Performance Degradation:
+            - Warning: Execution time increased > 20% over 7 days
+
+    Attributes:
+        metrics_collector: TestMetricsCollector for retrieving trend data
+        logger: Logger instance for this class
+
+    Example:
+        >>> collector = TestMetricsCollector(Path("metrics.db"))
+        >>> alert_system = AlertSystem(collector)
+        >>> suite_metrics = SuiteMetrics(...)
+        >>> alert_system.check_and_send_alerts("auth_tests", suite_metrics)
+    """
+
     def __init__(self, metrics_collector: TestMetricsCollector):
-        """Initialize alert system."""
+        """
+        Initialize alert system with metrics collector.
+
+        Args:
+            metrics_collector: TestMetricsCollector instance for accessing
+                historical metrics and trend data
+        """
         self.metrics_collector = metrics_collector
         self.logger = logging.getLogger(__name__)
-    
+
     def check_and_send_alerts(self, suite_name: str, latest_metrics: SuiteMetrics):
-        """Check metrics and send alerts if thresholds are exceeded."""
+        """
+        Check metrics against thresholds and send alerts if exceeded.
+
+        Evaluates the latest suite metrics and recent trends to identify
+        conditions requiring notification. Multiple alerts may be generated
+        if multiple thresholds are exceeded.
+
+        Args:
+            suite_name: Name of the test suite being checked
+            latest_metrics: Most recent SuiteMetrics for this suite
+
+        Alert Conditions:
+            1. Success rate < 80% → Critical alert
+            2. Success rate < 95% → Warning alert
+            3. Execution time increase > 20% over 7 days → Warning alert
+
+        Note:
+            Currently logs alerts. Extend _send_alert() for actual notifications.
+        """
         alerts = []
-        
-        # Success rate alert
+
+        # Success rate threshold checks
         if latest_metrics.success_rate < 80:
             alerts.append({
                 "level": "critical",
@@ -855,46 +978,115 @@ class AlertSystem:
             })
         elif latest_metrics.success_rate < 95:
             alerts.append({
-                "level": "warning", 
+                "level": "warning",
                 "message": f"Success rate is {latest_metrics.success_rate:.1f}% in {suite_name}"
             })
-        
-        # Performance degradation alert
+
+        # Performance degradation check (7-day trend)
         trends = self.metrics_collector.get_performance_trends(suite_name, days=7)
         execution_trend = trends.get('execution_time')
-        
+
         if execution_trend and execution_trend.trend_direction == 'degrading' and execution_trend.change_percent > 20:
             alerts.append({
                 "level": "warning",
                 "message": f"Execution time increased by {execution_trend.change_percent:.1f}% in {suite_name}"
             })
-        
-        # Send alerts
+
+        # Send all triggered alerts
         for alert in alerts:
             self._send_alert(alert)
-    
+
     def _send_alert(self, alert: Dict):
-        """Send alert (placeholder for integration with notification systems)."""
+        """
+        Send alert notification through configured channels.
+
+        Currently logs alerts to the application logger. This method serves
+        as an integration point for external notification systems.
+
+        Args:
+            alert: Dictionary with 'level' (critical/warning) and 'message' keys
+
+        Integration Points:
+            To add notification channels, extend this method with:
+            - Slack webhooks (slack_sdk)
+            - Email (SMTP)
+            - PagerDuty API
+            - Discord webhooks
+            - Microsoft Teams
+            - Custom monitoring systems
+
+        Example Integration:
+            >>> # Add to this method:
+            >>> import requests
+            >>> if alert['level'] == 'critical':
+            >>>     requests.post(SLACK_WEBHOOK_URL, json={'text': alert['message']})
+        """
         self.logger.warning(f"ALERT [{alert['level'].upper()}]: {alert['message']}")
-        
-        # Here you would integrate with:
+
+        # TODO: Add integrations here:
         # - Slack notifications
         # - Email alerts
         # - PagerDuty
         # - Discord webhooks
-        # - etc.
+        # - Custom webhook endpoints
 
 
-# Example usage and integration
+# Example usage and integration function
 def monitor_test_execution(test_results: Dict, output_dir: Path):
-    """Monitor test execution and generate reports."""
+    """
+    Monitor test execution and generate comprehensive reports.
+
+    This is a convenience function demonstrating the complete workflow
+    for integrating the monitoring system into a test suite. It handles
+    metrics collection, alert checking, and multi-format report generation.
+
+    Args:
+        test_results: Dictionary mapping suite names to result dictionaries.
+            Each result dict should contain:
+                - 'total': Total number of tests (int)
+                - 'passed': Number of passed tests (int)
+                - 'failed': Number of failed tests (int)
+                - 'skipped': Number of skipped tests (int)
+                - 'duration': Total execution time in seconds (float)
+                - 'avg_time': Average test execution time (float)
+                - 'success_rate': Success rate percentage (float)
+                - 'coverage': Optional code coverage percentage (float)
+
+        output_dir: Directory path where reports and database will be saved
+
+    Returns:
+        Tuple of (metrics_collector, report_generator) for further use
+
+    Example:
+        >>> test_results = {
+        ...     'auth_tests': {
+        ...         'total': 10, 'passed': 9, 'failed': 1, 'skipped': 0,
+        ...         'duration': 15.3, 'avg_time': 1.53, 'success_rate': 90.0
+        ...     },
+        ...     'api_tests': {
+        ...         'total': 25, 'passed': 25, 'failed': 0, 'skipped': 0,
+        ...         'duration': 42.7, 'avg_time': 1.71, 'success_rate': 100.0
+        ...     }
+        ... }
+        >>> collector, generator = monitor_test_execution(
+        ...     test_results, Path("./test_output")
+        ... )
+
+    Side Effects:
+        - Creates SQLite database at output_dir/test_metrics.db
+        - Generates test_report.html in output_dir
+        - Generates test_report.json in output_dir
+        - Generates test_report.md in output_dir
+        - Logs alerts if thresholds exceeded
+    """
+    # Initialize monitoring components
     metrics_collector = TestMetricsCollector(output_dir / "test_metrics.db")
     report_generator = ReportGenerator(metrics_collector)
     alert_system = AlertSystem(metrics_collector)
-    
-    # Record metrics for each suite
+
+    # Process each test suite
     for suite_name, suite_result in test_results.items():
-        # Convert results to metrics format
+        # Convert test framework results to metrics format
         suite_metrics = SuiteMetrics(
             suite_name=suite_name,
             total_tests=suite_result.get('total', 0),
@@ -907,16 +1099,16 @@ def monitor_test_execution(test_results: Dict, output_dir: Path):
             timestamp=datetime.now().isoformat(),
             coverage_percent=suite_result.get('coverage', None)
         )
-        
-        # Record metrics
+
+        # Persist metrics to database
         metrics_collector.record_suite_metrics(suite_metrics)
-        
-        # Check for alerts
+
+        # Check for alert conditions and notify if needed
         alert_system.check_and_send_alerts(suite_name, suite_metrics)
-    
-    # Generate reports
+
+    # Generate all report formats
     report_generator.generate_html_report(output_dir / "test_report.html")
-    report_generator.generate_json_report(output_dir / "test_report.json") 
+    report_generator.generate_json_report(output_dir / "test_report.json")
     report_generator.generate_markdown_report(output_dir / "test_report.md")
-    
+
     return metrics_collector, report_generator
