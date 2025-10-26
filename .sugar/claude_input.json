@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in base.py",
-  "description": "Review the documentation and comments in ./tests/e2e/base.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in transcription_cache.py",
+  "description": "Review the documentation and comments in ./src/cache/transcription_cache.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "491cdd45-ee35-4b78-8d2d-8be248e35326",
+    "work_item_id": "57d25639-ef24-4400-9b0c-9a829697a5eb",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T20:23:05.075018",
+      "discovered_at": "2025-10-26T20:23:05.075025",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T20:23:05.792170",
+  "timestamp": "2025-10-26T20:24:46.873108",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
