@@ -96,6 +96,38 @@ class TestLRUEviction:
         victim = select_lru_victim(cache, keys)
         assert victim == "dummy_key"
 
+    def test_lru_with_identical_access_times(self):
+        """LRU should handle tie-breaking when multiple entries have same accessed_at."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        base_time = datetime.now()
+
+        # All entries have the same accessed_at time
+        for i in range(5):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time,
+                accessed_at=base_time,  # All same time
+                access_count=1,
+                ttl=3600,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should return a valid key (deterministic based on min() behavior)
+        victim = select_lru_victim(cache, keys)
+        assert victim in keys
+
 
 class TestLFUEviction:
     """Tests for Least Frequently Used (LFU) eviction strategy."""
@@ -172,6 +204,72 @@ class TestLFUEviction:
 
         victim = select_lfu_victim(cache, keys)
         assert victim == "dummy_key"
+
+    def test_lfu_with_identical_access_counts(self):
+        """LFU should handle tie-breaking when multiple entries have same access_count."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        base_time = datetime.now()
+
+        # All entries have the same access count
+        for i in range(5):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time,
+                accessed_at=base_time,
+                access_count=10,  # All same count
+                ttl=3600,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should return a valid key (first one encountered with min count)
+        victim = select_lfu_victim(cache, keys)
+        assert victim in keys
+
+    def test_lfu_multiple_entries_with_same_minimum(self):
+        """LFU should handle multiple entries sharing the minimum access count."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        base_time = datetime.now()
+
+        # Multiple entries with minimum count (5), others higher
+        access_counts = [10, 5, 20, 5, 15, 5]  # key_1, key_3, key_5 all have count 5
+
+        for i, count in enumerate(access_counts):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time,
+                accessed_at=base_time,
+                access_count=count,
+                ttl=3600,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should return one of the keys with count=5
+        victim = select_lfu_victim(cache, keys)
+        assert victim in {"key_1", "key_3", "key_5"}
 
 
 class TestTTLEviction:
@@ -538,6 +636,38 @@ class TestFIFOEviction:
 
         victim = select_fifo_victim(cache, keys)
         assert victim == "dummy_key"
+
+    def test_fifo_with_identical_creation_times(self):
+        """FIFO should handle tie-breaking when multiple entries have same created_at."""
+        cache = InMemoryCache(max_size_mb=10)
+        keys = set()
+
+        base_time = datetime.now()
+
+        # All entries have the same creation time
+        for i in range(5):
+            key = f"key_{i}"
+            keys.add(key)
+            cache_key = CacheKey(
+                file_hash=f"hash_{i}",
+                provider="test",
+                settings_hash=f"settings_{i}",
+            )
+            entry = CacheEntry(
+                key=cache_key,
+                value={"data": f"value_{i}"},
+                size=100,
+                created_at=base_time,  # All same time
+                accessed_at=base_time,
+                access_count=1,
+                ttl=3600,
+                metadata={},
+            )
+            cache.put(key, entry)
+
+        # Should return a valid key (deterministic based on min() behavior)
+        victim = select_fifo_victim(cache, keys)
+        assert victim in keys
 
 
 class TestEvictionFallbackPaths:
