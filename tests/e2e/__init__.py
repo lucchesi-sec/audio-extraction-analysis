@@ -8,3 +8,26 @@ This module provides comprehensive E2E testing capabilities including:
 - Security testing
 - Test data management
 """
+
+from tests.e2e.base import (
+    E2ETestBase,
+    CLITestMixin,
+    MockProviderMixin,
+    PerformanceTestMixin,
+    SecurityTestMixin,
+    TestFile,
+    TestResult,
+)
+
+__all__ = [
+    # Base classes
+    "E2ETestBase",
+    # Test mixins
+    "CLITestMixin",
+    "MockProviderMixin",
+    "PerformanceTestMixin",
+    "SecurityTestMixin",
+    # Data classes
+    "TestFile",
+    "TestResult",
+]

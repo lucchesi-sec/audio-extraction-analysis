@@ -283,8 +283,8 @@ class E2ETestRunner:
         if self.args.coverage:
             pytest_args.extend([
                 "--cov=src",
-                f"--cov-report=html:{self.output_dir / f'{suite_name}_coverage'",
-                f"--cov-report=json:{self.output_dir / f'{suite_name}_coverage.json'}"
+                f"--cov-report=html:{str(self.output_dir / (suite_name + '_coverage'))}",
+                f"--cov-report=json:{str(self.output_dir / (suite_name + '_coverage.json'))}"
             ])
         
         # Add parallel execution if requested
