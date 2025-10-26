@@ -114,25 +114,26 @@ class InMemoryCache(CacheBackend):
             - May evict oldest entries to make space
             - Updates size tracking
         """
-        # Normalize key for consistency
+        # Normalize key for consistency (handles case, whitespace variations)
         normalized_key = CacheUtils.normalize_key(key)
-        
+
         with self._lock:
-            # Check if entry can fit at all
+            # Reject if entry is larger than total cache capacity
             if not self._size_manager.can_fit(entry.size):
                 return False
 
-            # Remove old entry if exists
+            # If updating existing entry, first remove it from size tracking
             if normalized_key in self._cache:
                 old_entry = self._cache[normalized_key]
                 self._size_manager.remove_entry(old_entry.size)
 
-            # Evict if needed to make space
+            # Evict oldest entries until enough space available
+            # Continues until entry can fit or cache is empty
             while self._size_manager.would_exceed_limit(entry.size):
                 if not self._evict_oldest():
                     return False
 
-            # Add new entry
+            # Store entry and update size tracking
             self._cache[normalized_key] = entry
             self._size_manager.add_entry(entry.size)
             return True
@@ -218,7 +219,45 @@ class InMemoryCache(CacheBackend):
 
 
 class DiskCache(CacheBackend):
-    """Disk-based cache backend using SQLite."""
+    """Persistent, thread-safe disk cache using SQLite with WAL mode.
+
+    This cache implementation provides durable storage using SQLite database
+    with Write-Ahead Logging (WAL) for improved concurrent access. Suitable
+    for larger datasets and scenarios requiring persistence across sessions.
+
+    Thread Safety:
+        Uses thread-local storage for SQLite connections (one per thread) since
+        SQLite connections are not thread-safe. All operations are additionally
+        protected by a Lock for consistency.
+
+    Persistence:
+        Data is persisted to disk in SQLite database format. Survives process
+        restarts and can be shared across process instances (with file locking).
+
+    WAL Mode Benefits:
+        - Concurrent reads without blocking
+        - Better write performance
+        - Crash resistance with automatic recovery
+        - Configured with NORMAL synchronous mode for balanced safety/performance
+
+    Eviction Policy:
+        - Evicts least recently accessed entries when size limit is exceeded
+        - Access time and count tracked automatically in database
+        - Uses indexed queries for efficient eviction selection
+
+    Performance Optimizations:
+        - Thread-local connections reduce connection overhead
+        - Indexed access_at and size columns for fast queries
+        - PRAGMA optimizations (temp_store=MEMORY, synchronous=NORMAL)
+        - Lazy connection creation per thread
+
+    Attributes:
+        cache_dir (Path): Directory containing cache database
+        db_path (Path): Path to SQLite database file
+        max_size_bytes (int): Maximum total cache size in bytes
+        _lock (Lock): Global lock for consistency across threads
+        _local (threading.local): Thread-local storage for connections
+    """
 
     def __init__(self, cache_dir: Optional[Union[str, Path]] = None, max_size_mb: int = 1000):
         """Initialize disk cache.
@@ -243,22 +282,43 @@ class DiskCache(CacheBackend):
         logger.info(f"Initialized DiskCache at {self.cache_dir} with max_size={max_size_mb}MB (WAL mode)")
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Get or create thread-local database connection.
+        """Get or create thread-local database connection with optimizations.
+
+        Each thread gets its own connection stored in thread-local storage.
+        Connections are lazily created on first use per thread and configured
+        with performance optimizations (WAL mode, NORMAL sync, memory temp store).
 
         Returns:
-            Thread-local SQLite connection
+            Thread-local SQLite connection with optimizations applied
+
+        Note:
+            Connection is cached in thread-local storage and reused for all
+            subsequent calls from the same thread. Not thread-safe to share
+            connections across threads.
         """
         if not hasattr(self._local, 'conn'):
             self._local.conn = sqlite3.connect(str(self.db_path))
-            # Enable WAL mode for concurrent reads
+            # Enable WAL (Write-Ahead Logging) mode for concurrent reads
+            # WAL allows multiple readers while a writer is active
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-            # Additional optimizations
+            # Performance optimizations:
+            # - NORMAL sync: balance between safety and speed (fsync at checkpoints)
+            # - MEMORY temp store: use RAM for temporary tables/indexes
             self._local.conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn.execute("PRAGMA temp_store=MEMORY")
         return self._local.conn
 
     def _init_database(self):
-        """Initialize SQLite database with WAL mode."""
+        """Initialize SQLite database schema with tables and indexes.
+
+        Creates the cache_entries table with columns for key, value, metadata,
+        and access tracking. Sets up indexes on accessed_at and size columns
+        for efficient eviction queries.
+
+        Note:
+            Uses IF NOT EXISTS so safe to call multiple times.
+            WAL mode is enabled per-connection in _get_connection().
+        """
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -294,13 +354,26 @@ class DiskCache(CacheBackend):
         conn.commit()
 
     def get(self, key: str) -> Optional[CacheEntry]:
-        """Get entry from disk.
+        """Retrieve a cache entry from disk and update access statistics.
+
+        Thread-safe operation that reads an entry from SQLite database,
+        deserializes it, and updates its access timestamp and count.
 
         Args:
-            key: Cache key
+            key: Cache key to retrieve
 
         Returns:
-            Cache entry or None
+            CacheEntry if found and successfully deserialized, None if:
+            - Key doesn't exist in database
+            - Entry is corrupted and cannot be deserialized
+            - Database error occurs
+
+        Note:
+            Side effects:
+            - Updates accessed_at timestamp to current time
+            - Increments access_count by 1
+            - Removes corrupted entries automatically
+            - Logs errors on deserialization failures
         """
         with self._lock:
             try:
@@ -358,22 +431,36 @@ class DiskCache(CacheBackend):
         conn.commit()
 
     def _deserialize_entry(self, row: tuple, key: str) -> Optional[CacheEntry]:
-        """Deserialize cache entry from database row.
+        """Deserialize cache entry from database row with error recovery.
+
+        Attempts to decode and deserialize JSON-encoded cache entry from
+        database BLOB. Handles circular import issues and automatically
+        cleans up corrupted entries.
 
         Args:
-            row: Database row containing serialized entry
-            key: Cache key (used for cleanup on error)
+            row: Database row tuple with BLOB value at index 0
+            key: Cache key (used for cleanup if deserialization fails)
 
         Returns:
-            Deserialized cache entry or None
+            Deserialized CacheEntry object, or None if:
+            - JSON decoding fails (invalid JSON)
+            - Unicode decoding fails (corrupted BLOB)
+            - Required keys missing from dict
+            - CacheEntry import fails
+
+        Note:
+            Side effect: Automatically deletes corrupted entries from database
+            and logs the error for debugging.
         """
         try:
             entry_dict = json.loads(row[0].decode('utf-8'))
-            # Import CacheEntry - handle circular import properly
+            # Handle potential circular import when importing CacheEntry
+            # at runtime (already imported at module level, but using explicit
+            # import here for clarity and to handle edge cases)
             try:
                 from .transcription_cache import CacheEntry
             except ImportError:
-                # If circular import, use the already imported class
+                # Fallback: use the already imported class from module globals
                 CacheEntry = globals().get('CacheEntry')
                 if not CacheEntry:
                     raise ImportError("CacheEntry not available")
@@ -543,10 +630,20 @@ class DiskCache(CacheBackend):
             return set()
 
     def _evict_if_needed(self, required_size: int):
-        """Evict entries if needed to make space.
+        """Evict least recently accessed entries to make space for new entry.
+
+        Iteratively removes the oldest accessed entry until enough space is
+        available for the required size. Uses indexed queries for efficient
+        selection of eviction candidates.
 
         Args:
-            required_size: Size needed in bytes
+            required_size: Size needed in bytes for new entry
+
+        Note:
+            - Eviction continues until: current_size + required_size <= max_size
+            - Uses accessed_at index for O(log n) eviction candidate selection
+            - Stops early if no more entries available to evict
+            - Must be called within a lock context
         """
         current_size = self.size()
 
@@ -572,10 +669,22 @@ class DiskCache(CacheBackend):
                 break
 
     def close(self):
-        """Close database connections.
+        """Close thread-local database connection and clean up resources.
 
-        Should be called when the cache is no longer needed to ensure
-        proper cleanup of database connections.
+        Closes the SQLite connection for the current thread and removes it
+        from thread-local storage. Should be called when cache is no longer
+        needed to prevent resource leaks.
+
+        Note:
+            - Only closes connection for the calling thread
+            - Other threads' connections remain active
+            - Safe to call multiple times (no-op if already closed)
+            - Errors during close are logged but not raised
+            - Consider using context manager pattern if available
+
+        Best Practice:
+            Call this method in cleanup code, thread exit handlers, or
+            application shutdown sequences to ensure proper resource disposal.
         """
         if hasattr(self._local, 'conn'):
             try:
