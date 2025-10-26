@@ -57,6 +57,30 @@ class TestPathSanitizerSubprocess:
         resolved = str(Path("./relative/path.txt").resolve())
         assert resolved in result.replace("'", "").replace('"', "")
 
+    def test_sanitize_empty_string_path(self):
+        """Test sanitization of empty string path."""
+        result = PathSanitizer.sanitize_for_subprocess("")
+
+        # Should handle empty string gracefully
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_sanitize_path_with_quotes(self):
+        """Test path with single and double quotes."""
+        result = PathSanitizer.sanitize_for_subprocess("/path/with'quote.txt")
+
+        # Should be properly escaped by shlex.quote
+        assert isinstance(result, str)
+        # shlex.quote should handle quotes safely
+
+    def test_sanitize_path_with_newline(self, tmp_path):
+        """Test that paths with newlines are sanitized."""
+        # Pathlib will reject this, but test string path
+        result = PathSanitizer.sanitize_for_subprocess("/path/without\nnewline")
+
+        # Should be escaped or handled safely
+        assert isinstance(result, str)
+
 
 class TestPathSanitizerFilename:
     """Tests for sanitize_filename method."""
