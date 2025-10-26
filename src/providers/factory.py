@@ -128,15 +128,34 @@ class TranscriptionProviderFactory:
         circuit_config: Optional[CircuitBreakerConfig],
         retry_config: Optional[RetryConfig],
     ) -> tuple[CircuitBreakerConfig, RetryConfig]:
-        """Get default circuit breaker and retry configurations.
+        """Get default circuit breaker and retry configurations (internal helper).
+
+        This method provides default configurations for fault tolerance and retry logic
+        when not explicitly provided. Defaults are pulled from the Config singleton.
+
+        Circuit Breaker Pattern:
+            Prevents cascading failures by opening circuit after threshold failures.
+            Automatically attempts recovery after timeout period.
+
+        Retry Pattern:
+            Implements exponential backoff with jitter for transient failures.
+            Helps handle temporary network issues and rate limiting.
 
         Args:
-            provider_name: Name of the provider
-            circuit_config: Existing circuit config or None
-            retry_config: Existing retry config or None
+            provider_name: Name of the provider (currently unused, reserved for
+                future provider-specific default configuration)
+            circuit_config: Existing circuit breaker config or None. If None,
+                defaults from Config are used.
+            retry_config: Existing retry config or None. If None, defaults from
+                Config are used.
 
         Returns:
-            Tuple of (circuit_config, retry_config)
+            Tuple of (circuit_config, retry_config) where None values are replaced
+            with defaults from Config
+
+        Note:
+            Both configs are always returned as non-None objects. If both inputs
+            are provided, they are returned unchanged for efficiency.
         """
         if circuit_config is not None and retry_config is not None:
             return circuit_config, retry_config
@@ -162,11 +181,20 @@ class TranscriptionProviderFactory:
 
     @classmethod
     def _run_health_check(cls, provider: BaseTranscriptionProvider, provider_name: str) -> None:
-        """Run health check on provider and log results.
+        """Run health check on provider and log results (internal helper).
+
+        This is a synchronous health check used during provider creation.
+        Health check failures are logged as warnings but do not prevent provider
+        creation, as the provider may recover or the issue may be transient.
 
         Args:
             provider: Provider instance to check
-            provider_name: Name of the provider for logging
+            provider_name: Name of the provider for logging purposes
+
+        Note:
+            - Skipped if Config.HEALTH_CHECK_ENABLED is False
+            - Failures are logged but not raised (non-blocking)
+            - Internal method, prefer check_provider_health() for external use
         """
         if not Config.HEALTH_CHECK_ENABLED:
             return
@@ -182,7 +210,7 @@ class TranscriptionProviderFactory:
                 logger.info(f"Provider '{provider_name}' health check passed")
         except Exception as e:
             logger.warning(f"Health check failed for '{provider_name}': {e}")
-            # Don't raise error - health check is informational
+            # Don't raise error - health check is informational only
 
     @classmethod
     def _create_provider_instance(
@@ -193,20 +221,29 @@ class TranscriptionProviderFactory:
         circuit_config: CircuitBreakerConfig,
         retry_config: RetryConfig,
     ) -> BaseTranscriptionProvider:
-        """Create and validate provider instance.
+        """Create and validate provider instance (internal helper).
+
+        This method instantiates a provider class and validates its configuration
+        before returning it. Validation ensures API keys are present (for cloud providers)
+        and all required dependencies are available.
 
         Args:
-            provider_class: Provider class to instantiate
-            provider_name: Name of the provider for error messages
-            api_key: Optional API key
-            circuit_config: Circuit breaker configuration
-            retry_config: Retry configuration
+            provider_class: Provider class to instantiate (e.g., DeepgramTranscriber)
+            provider_name: Name of the provider for error messages and logging
+            api_key: Optional API key for cloud providers. None for local providers.
+            circuit_config: Circuit breaker configuration for fault tolerance
+            retry_config: Retry configuration for transient failures
 
         Returns:
-            Validated provider instance
+            Fully initialized and validated provider instance
 
         Raises:
-            ValueError: If provider configuration is invalid
+            ValueError: If provider configuration is invalid (e.g., missing API key,
+                missing dependencies, or provider-specific validation failure)
+
+        Note:
+            Internal method used by create_provider(). Validation is performed by
+            calling the provider's validate_configuration() method.
         """
         provider = provider_class(
             api_key=api_key, circuit_config=circuit_config, retry_config=retry_config
@@ -492,17 +529,37 @@ class TranscriptionProviderFactory:
     async def check_provider_health(
         cls, provider_name: str, api_key: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Check health of a specific provider without creating full instance.
+        """Asynchronously check health of a specific provider.
+
+        This method creates a minimal provider instance and performs a health check
+        to verify the provider is operational and can accept requests.
 
         Args:
-            provider_name: Name of the provider to check
-            api_key: Optional API key
+            provider_name: Name of the provider to check (e.g., 'deepgram', 'whisper')
+            api_key: Optional API key override. If None, uses configuration.
+                Not applicable to local providers.
 
         Returns:
-            Dictionary containing health check results
+            Dictionary containing health check results:
+                - healthy: bool indicating if provider is operational
+                - status: str status message (e.g., 'ok', 'creation_failed')
+                - response_time_ms: int response time in milliseconds
+                - details: dict with additional diagnostic information
 
         Raises:
-            ValueError: If provider is not registered
+            ValueError: If provider_name is not registered in the factory
+
+        Note:
+            For synchronous contexts, use check_provider_health_sync() instead.
+            This method does not throw exceptions on provider failures; errors are
+            returned in the result dictionary with healthy=False.
+
+        Example:
+            >>> health = await factory.check_provider_health('deepgram')
+            >>> if health['healthy']:
+            ...     print(f"Provider ready ({health['response_time_ms']}ms)")
+            ... else:
+            ...     print(f"Provider unavailable: {health['status']}")
         """
         if provider_name not in cls._providers:
             available = ", ".join(cls.get_available_providers())
@@ -511,9 +568,11 @@ class TranscriptionProviderFactory:
             )
 
         try:
+            # Create provider without initial health check to avoid recursion
             provider = cls.create_provider(provider_name, api_key, run_health_check=False)
             return await provider.health_check_async()
         except Exception as e:
+            # Return structured error response instead of raising
             return {
                 "healthy": False,
                 "status": "creation_failed",
@@ -569,10 +628,34 @@ class TranscriptionProviderFactory:
 
     @classmethod
     def get_provider_status(cls) -> Dict[str, Any]:
-        """Get status of all configured providers.
+        """Get comprehensive status of all transcription providers.
+
+        This method provides a complete overview of provider availability, configuration,
+        and health status. Useful for diagnostics and monitoring.
 
         Returns:
-            Dictionary containing status of all providers
+            Dictionary containing:
+                - available_providers: List of registered provider names
+                - configured_providers: List of providers with valid configuration
+                - provider_health: Dict mapping provider names to health check results
+
+        Health Check Results:
+            Each provider_health entry contains:
+                - healthy: bool indicating operational status
+                - status: str status message
+                - response_time_ms: int (if healthy)
+                - error: str (if check failed)
+
+        Note:
+            This performs synchronous health checks on all configured providers,
+            which may take several seconds if multiple providers are configured.
+
+        Example:
+            >>> status = factory.get_provider_status()
+            >>> print(f"Available: {status['available_providers']}")
+            >>> print(f"Configured: {status['configured_providers']}")
+            >>> for name, health in status['provider_health'].items():
+            ...     print(f"{name}: {'✓' if health['healthy'] else '✗'}")
         """
         status = {
             "available_providers": cls.get_available_providers(),
@@ -580,7 +663,7 @@ class TranscriptionProviderFactory:
             "provider_health": {},
         }
 
-        # Check health of configured providers
+        # Perform health checks on all configured providers
         for provider_name in cls.get_configured_providers():
             try:
                 health = cls.check_provider_health_sync(provider_name)
