@@ -1,46 +1,32 @@
 {
-  "task_type": "feature",
-  "title": "Add pipeline error handling tests",
-  "description": "{\n  \"priority\": 4,\n  \"type\": \"test\",\n  \"context\": \"Pipeline coordinates 3 components but error propagation not tested. Current test entirely mocked. Need integration tests for failure scenarios.\",\n  \"business_context\": \"Prevents resource leaks, unclear errors, crashes. Critical for user experience.\",\n  \"technical_requirements\": [\n    \"Create tests/integration/test_pipeline_error_handling.py\",\n    \"Test extraction failure \u2192 cleanup temp files\",\n    \"Test transcription failure \u2192 graceful error\",\n    \"Test invalid video format \u2192 early validation\",\n    \"Test disk space exhaustion \u2192 clear error\",\n    \"Test partial success \u2192 verify cleanup\"\n  ],\n  \"success_criteria\": [\n    \"All error paths tested\",\n    \"Temp file cleanup verified\",\n    \"Error messages clear and actionable\",\n    \"No resource leaks on failure\",\n    \"Tests use real instances not mocks\"\n  ]\n}",
+  "task_type": "bug_fix",
+  "title": "Secure credentials in verify_streaming.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/verify_streaming.py**\nIssue Type: potential_secret\nSeverity: high\nLine: 35\n\n**Description:** Potential api key found\n**Suggested Action:** Move api key to environment variables\n\n**Code Context:**\n```\n            transcriber = DeepgramTranscriber(api_...\n```",
   "execution_mode": "ExecutionMode.AGENT",
-  "agent_type": "AgentType.GENERAL_PURPOSE",
+  "agent_type": "AgentType.TECH_LEAD",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "b9207a6a-3c51-46cd-b8b2-ec1a4bc0bb8f",
-    "source_type": "cli",
-    "priority": 3,
+    "work_item_id": "dd67c24a-db7d-4e3b-89b4-bf5d8699f714",
+    "source_type": "code_quality",
+    "priority": 5,
     "attempts": 1,
     "files_involved": null,
     "repository_info": null,
     "previous_attempts": null,
     "session_context": {
-      "added_via": "sugar_cli",
-      "timestamp": "2025-10-26T16:46:01.254642",
-      "parsed_description": {
-        "priority": 4,
-        "type": "test",
-        "context": "Pipeline coordinates 3 components but error propagation not tested. Current test entirely mocked. Need integration tests for failure scenarios.",
-        "business_context": "Prevents resource leaks, unclear errors, crashes. Critical for user experience.",
-        "technical_requirements": [
-          "Create tests/integration/test_pipeline_error_handling.py",
-          "Test extraction failure \u2192 cleanup temp files",
-          "Test transcription failure \u2192 graceful error",
-          "Test invalid video format \u2192 early validation",
-          "Test disk space exhaustion \u2192 clear error",
-          "Test partial success \u2192 verify cleanup"
-        ],
-        "success_criteria": [
-          "All error paths tested",
-          "Temp file cleanup verified",
-          "Error messages clear and actionable",
-          "No resource leaks on failure",
-          "Tests use real instances not mocks"
-        ]
+      "quality_issue": {
+        "type": "potential_secret",
+        "severity": "high",
+        "line": 35,
+        "description": "Potential api key found",
+        "suggestion": "Move api key to environment variables",
+        "content": "            transcriber = DeepgramTranscriber(api_..."
       },
-      "description_format": "json"
+      "discovered_at": "2025-10-26T17:39:52.593480",
+      "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T17:35:48.127887",
+  "timestamp": "2025-10-26T17:39:53.055990",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

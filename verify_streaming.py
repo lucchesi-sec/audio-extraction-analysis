@@ -24,15 +24,19 @@ def verify_streaming_implementation():
     from src.utils.retry import RetryConfig
 
     print("\n1. Testing file handle creation...")
-    # Mock the initialization to avoid dependency issues
-    with patch.dict('os.environ', {'DEEPGRAM_API_KEY': 'test_key'}):
+    # Mock the initialization and config to avoid dependency issues
+    with patch('src.providers.deepgram.Config') as mock_config:
+        # Set API key on mock config (matches test pattern in test_transcription_service.py)
+        mock_config.DEEPGRAM_API_KEY = 'test_key'
+
         with patch('src.providers.deepgram.ProviderInitializer.initialize_provider_configs') as mock_init:
             # Return proper config objects
             mock_init.return_value = (
                 Mock(spec=RetryConfig),
                 Mock(spec=CircuitBreakerConfig)
             )
-            transcriber = DeepgramTranscriber(api_key='test_key')
+            # API key is read from mocked Config
+            transcriber = DeepgramTranscriber()
 
             # Test that _open_audio_file returns a file handle
             test_file = Path(__file__).parent / "README.md"
