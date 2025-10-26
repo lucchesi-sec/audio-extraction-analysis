@@ -1,12 +1,12 @@
 {
   "task_type": "documentation",
-  "title": "Review and improve documentation in base.py",
-  "description": "Review the documentation and comments in ./src/providers/base.py and improve clarity, completeness, and accuracy.",
+  "title": "Review and improve documentation in monitoring.py",
+  "description": "Review the documentation and comments in ./tests/e2e/monitoring.py and improve clarity, completeness, and accuracy.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.GENERAL_PURPOSE",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "d347ee7f-7393-493c-9961-c83cf6550c93",
+    "work_item_id": "36f84c03-7625-4b12-a8c6-91d54859b035",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "documentation",
-      "discovered_at": "2025-10-26T20:03:30.085302",
+      "discovered_at": "2025-10-26T20:18:35.088990",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T20:20:38.974796",
+  "timestamp": "2025-10-26T20:20:52.474525",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,

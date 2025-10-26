@@ -1,12 +1,38 @@
 """
 Monitoring and Reporting Module for E2E Testing.
 
-This module provides:
-- Test execution monitoring
-- Performance metrics collection
-- Report generation and formatting
-- Trend analysis capabilities
-- Integration with external monitoring systems
+This module provides comprehensive test execution monitoring, performance tracking,
+and reporting capabilities for end-to-end testing workflows. It stores metrics in
+a SQLite database and generates reports in multiple formats (HTML, JSON, Markdown).
+
+Key Features:
+    - Test execution monitoring with detailed metrics
+    - Performance metrics collection (execution time, memory, CPU)
+    - Multi-format report generation (HTML, JSON, Markdown)
+    - Historical trend analysis and performance tracking
+    - Automated alert system for failures and degradation
+    - Integration points for external monitoring systems
+
+Database Schema:
+    The module creates two main tables:
+    - test_metrics: Individual test execution data
+    - suite_metrics: Aggregated test suite statistics
+
+    Indexes are created on timestamp and suite_name for efficient queries.
+
+Usage Example:
+    >>> from pathlib import Path
+    >>> metrics_collector = TestMetricsCollector(Path("metrics.db"))
+    >>> report_generator = ReportGenerator(metrics_collector)
+    >>> alert_system = AlertSystem(metrics_collector)
+    >>>
+    >>> # Record metrics
+    >>> suite_metrics = SuiteMetrics(...)
+    >>> metrics_collector.record_suite_metrics(suite_metrics)
+    >>>
+    >>> # Generate reports
+    >>> report_generator.generate_html_report(Path("report.html"))
+    >>> alert_system.check_and_send_alerts("suite_name", suite_metrics)
 """
 import json
 import time
@@ -20,7 +46,23 @@ import logging
 
 @dataclass
 class TestMetrics:
-    """Test execution metrics."""
+    """
+    Individual test execution metrics.
+
+    Captures detailed metrics for a single test execution, including
+    performance data, resource usage, and outcome information.
+
+    Attributes:
+        test_name: Name of the individual test function
+        suite_name: Name of the test suite containing this test
+        execution_time: Test execution duration in seconds
+        memory_peak_mb: Peak memory usage during test execution in megabytes
+        cpu_avg_percent: Average CPU utilization percentage during execution
+        success: Whether the test passed (True) or failed (False)
+        timestamp: ISO 8601 formatted timestamp of test execution
+        error_message: Error message if test failed, None if passed
+        coverage_percent: Code coverage percentage for this test, if available
+    """
     test_name: str
     suite_name: str
     execution_time: float
@@ -34,7 +76,24 @@ class TestMetrics:
 
 @dataclass
 class SuiteMetrics:
-    """Test suite aggregated metrics."""
+    """
+    Aggregated test suite metrics.
+
+    Contains summary statistics for an entire test suite execution,
+    calculated from individual test results.
+
+    Attributes:
+        suite_name: Name of the test suite
+        total_tests: Total number of tests in the suite
+        passed_tests: Number of tests that passed
+        failed_tests: Number of tests that failed
+        skipped_tests: Number of tests that were skipped
+        total_duration: Total execution time for all tests in seconds
+        avg_execution_time: Average execution time per test in seconds
+        success_rate: Percentage of tests that passed (0-100)
+        timestamp: ISO 8601 formatted timestamp of suite execution
+        coverage_percent: Overall code coverage percentage for suite, if available
+    """
     suite_name: str
     total_tests: int
     passed_tests: int
@@ -49,7 +108,25 @@ class SuiteMetrics:
 
 @dataclass
 class TrendData:
-    """Trend analysis data."""
+    """
+    Performance trend analysis data.
+
+    Captures historical trend information for a specific metric,
+    including direction of change and magnitude.
+
+    Attributes:
+        metric_name: Name of the metric being analyzed (e.g., 'execution_time', 'success_rate')
+        timestamps: List of ISO 8601 formatted timestamps for each data point
+        values: List of metric values corresponding to each timestamp
+        trend_direction: Direction of trend - one of:
+            - "improving": Metric is getting better over time
+            - "degrading": Metric is getting worse over time
+            - "stable": Metric shows less than 5% change
+        change_percent: Percentage change between first and second half of data
+            - Positive values indicate increase
+            - Negative values indicate decrease
+            - Interpretation depends on metric (e.g., execution time increase is bad)
+    """
     metric_name: str
     timestamps: List[str]
     values: List[float]
@@ -58,20 +135,69 @@ class TrendData:
 
 
 class TestMetricsCollector:
-    """Collects and stores test execution metrics."""
-    
+    """
+    Collects and stores test execution metrics in a SQLite database.
+
+    This class manages the persistence layer for test metrics, providing
+    methods to record individual test and suite metrics, retrieve historical
+    data, and analyze performance trends over time.
+
+    The database schema includes:
+    - test_metrics table: Individual test execution records
+    - suite_metrics table: Aggregated suite statistics
+    - Indexes on timestamp and suite_name for query performance
+
+    Attributes:
+        db_path: Path to SQLite database file
+        logger: Logger instance for this class
+
+    Example:
+        >>> collector = TestMetricsCollector(Path("metrics.db"))
+        >>> metrics = TestMetrics(
+        ...     test_name="test_login",
+        ...     suite_name="auth_tests",
+        ...     execution_time=1.5,
+        ...     memory_peak_mb=50.2,
+        ...     cpu_avg_percent=25.3,
+        ...     success=True,
+        ...     timestamp=datetime.now().isoformat()
+        ... )
+        >>> collector.record_test_metrics(metrics)
+    """
+
     def __init__(self, db_path: Optional[Path] = None):
-        """Initialize metrics collector."""
+        """
+        Initialize metrics collector with database connection.
+
+        Args:
+            db_path: Path to SQLite database file. Defaults to "test_metrics.db"
+                in the current directory if not specified.
+
+        Note:
+            Creates database and tables if they don't exist.
+        """
         self.db_path = db_path or Path("test_metrics.db")
         self.logger = logging.getLogger(__name__)
         self._init_database()
     
     def _init_database(self):
-        """Initialize SQLite database for metrics storage."""
+        """
+        Initialize SQLite database schema and indexes.
+
+        Creates two main tables for storing metrics:
+        1. test_metrics: Individual test execution records
+        2. suite_metrics: Aggregated suite-level statistics
+
+        Also creates indexes on frequently queried columns to optimize
+        performance for historical data retrieval and trend analysis.
+
+        Note:
+            Uses CREATE TABLE IF NOT EXISTS to safely handle repeated initializations.
+        """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            
-            # Create test metrics table
+
+            # Create test metrics table for individual test execution records
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS test_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,8 +212,8 @@ class TestMetricsCollector:
                     coverage_percent REAL
                 )
             """)
-            
-            # Create suite metrics table
+
+            # Create suite metrics table for aggregated suite-level statistics
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS suite_metrics (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,16 +229,27 @@ class TestMetricsCollector:
                     coverage_percent REAL
                 )
             """)
-            
-            # Create indexes for better query performance
+
+            # Create indexes for efficient historical queries
+            # Timestamp indexes support date range queries for trend analysis
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_test_timestamp ON test_metrics(timestamp)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_suite_timestamp ON suite_metrics(timestamp)")
+            # Suite name index supports filtering by specific test suite
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_test_suite ON test_metrics(suite_name)")
-            
+
             conn.commit()
     
     def record_test_metrics(self, metrics: TestMetrics):
-        """Record individual test metrics."""
+        """
+        Record individual test execution metrics to database.
+
+        Args:
+            metrics: TestMetrics object containing test execution data
+
+        Note:
+            This method commits the transaction immediately after insertion.
+            All fields from the TestMetrics object are persisted to the database.
+        """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -126,9 +263,18 @@ class TestMetricsCollector:
                 metrics.timestamp, metrics.error_message, metrics.coverage_percent
             ))
             conn.commit()
-    
+
     def record_suite_metrics(self, metrics: SuiteMetrics):
-        """Record test suite metrics."""
+        """
+        Record aggregated test suite metrics to database.
+
+        Args:
+            metrics: SuiteMetrics object containing suite-level statistics
+
+        Note:
+            This method commits the transaction immediately after insertion.
+            Use this method once per test suite execution to record summary data.
+        """
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -145,91 +291,157 @@ class TestMetricsCollector:
             conn.commit()
     
     def get_suite_history(self, suite_name: str, days: int = 30) -> List[SuiteMetrics]:
-        """Get historical data for a test suite."""
+        """
+        Retrieve historical suite metrics for trend analysis.
+
+        Fetches suite execution records from the specified time window,
+        ordered by most recent first. Used for generating historical
+        reports and analyzing performance trends over time.
+
+        Args:
+            suite_name: Name of the test suite to retrieve history for
+            days: Number of days of history to retrieve (default: 30)
+
+        Returns:
+            List of SuiteMetrics objects ordered by timestamp descending
+            (most recent first). Returns empty list if no data found.
+
+        Note:
+            The ID column from the database is excluded from returned objects.
+        """
         cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT * FROM suite_metrics 
+                SELECT * FROM suite_metrics
                 WHERE suite_name = ? AND timestamp >= ?
                 ORDER BY timestamp DESC
             """, (suite_name, cutoff_date))
-            
+
             rows = cursor.fetchall()
             columns = [desc[0] for desc in cursor.description]
-            
+
             return [
                 SuiteMetrics(**dict(zip(columns[1:], row[1:])))  # Skip ID column
                 for row in rows
             ]
     
     def get_performance_trends(self, suite_name: str, days: int = 30) -> Dict[str, TrendData]:
-        """Analyze performance trends for a test suite."""
+        """
+        Analyze performance trends for a test suite over time.
+
+        Calculates trend direction and magnitude for key metrics:
+        - Execution time (avg_execution_time)
+        - Success rate
+        - Code coverage (if available)
+
+        Args:
+            suite_name: Name of the test suite to analyze
+            days: Number of days of history to analyze (default: 30)
+
+        Returns:
+            Dictionary mapping metric names to TrendData objects.
+            Keys: 'execution_time', 'success_rate', 'coverage' (if available)
+            Returns empty dict if insufficient data (less than 2 data points).
+
+        Example:
+            >>> trends = collector.get_performance_trends("auth_tests", days=7)
+            >>> exec_trend = trends['execution_time']
+            >>> print(f"Execution time is {exec_trend.trend_direction}")
+        """
         history = self.get_suite_history(suite_name, days)
-        
+
         if len(history) < 2:
-            return {}
-        
-        # Sort by timestamp
+            return {}  # Need at least 2 data points for trend analysis
+
+        # Sort by timestamp chronologically for trend calculation
         history.sort(key=lambda x: x.timestamp)
-        
+
         trends = {}
-        
+
         # Analyze execution time trend
         execution_times = [h.avg_execution_time for h in history]
         timestamps = [h.timestamp for h in history]
-        
+
         trends['execution_time'] = self._calculate_trend(
             'avg_execution_time', timestamps, execution_times
         )
-        
+
         # Analyze success rate trend
         success_rates = [h.success_rate for h in history]
         trends['success_rate'] = self._calculate_trend(
             'success_rate', timestamps, success_rates
         )
-        
-        # Analyze coverage trend (if available)
+
+        # Analyze coverage trend (if data available)
         coverage_values = [h.coverage_percent for h in history if h.coverage_percent is not None]
         if coverage_values:
             coverage_timestamps = [h.timestamp for h in history if h.coverage_percent is not None]
             trends['coverage'] = self._calculate_trend(
                 'coverage', coverage_timestamps, coverage_values
             )
-        
+
         return trends
     
     def _calculate_trend(self, metric_name: str, timestamps: List[str], values: List[float]) -> TrendData:
-        """Calculate trend direction and change percentage."""
+        """
+        Calculate trend direction and percentage change for a metric.
+
+        Uses a simple linear trend calculation by comparing the average
+        of the first half of data points to the average of the second half.
+        Trend direction interpretation depends on the metric type.
+
+        Args:
+            metric_name: Name of metric being analyzed
+            timestamps: List of ISO timestamps for each value
+            values: List of metric values to analyze
+
+        Returns:
+            TrendData object containing trend analysis results
+
+        Trend Direction Logic:
+            - Stable: Change magnitude < 5%
+            - For success_rate and coverage metrics:
+                - Positive change = "improving"
+                - Negative change = "degrading"
+            - For execution_time and other performance metrics:
+                - Positive change = "degrading" (slower is worse)
+                - Negative change = "improving" (faster is better)
+
+        Note:
+            Returns "stable" with 0% change if less than 2 data points provided.
+        """
         if len(values) < 2:
             return TrendData(metric_name, timestamps, values, "stable", 0.0)
-        
-        # Simple linear trend calculation
+
+        # Split data in half and compare averages for simple linear trend
         first_half = values[:len(values)//2]
         second_half = values[len(values)//2:]
-        
+
         first_avg = sum(first_half) / len(first_half)
         second_avg = sum(second_half) / len(second_half)
-        
+
+        # Calculate percentage change (avoid division by zero)
         change_percent = ((second_avg - first_avg) / first_avg) * 100 if first_avg != 0 else 0
-        
-        # Determine trend direction
-        if abs(change_percent) < 5:  # Less than 5% change
+
+        # Determine trend direction based on metric type and change magnitude
+        if abs(change_percent) < 5:  # Less than 5% change considered stable
             trend_direction = "stable"
         elif change_percent > 0:
-            # For success rate and coverage, positive is improving
-            # For execution time, positive is degrading
+            # For success rate and coverage, increase is good (improving)
+            # For execution time, increase is bad (degrading - tests getting slower)
             if metric_name in ['success_rate', 'coverage']:
                 trend_direction = "improving"
             else:
                 trend_direction = "degrading"
         else:
+            # Negative change
             if metric_name in ['success_rate', 'coverage']:
                 trend_direction = "degrading"
             else:
-                trend_direction = "improving"
-        
+                trend_direction = "improving"  # Execution time decrease is good
+
         return TrendData(metric_name, timestamps, values, trend_direction, change_percent)
 
 
