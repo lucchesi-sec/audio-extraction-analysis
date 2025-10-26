@@ -457,6 +457,53 @@ class TestTestSuiteExecution:
         call_args = mock_run.call_args[0][0]
         assert "-n" in call_args
 
+    @patch('subprocess.run')
+    def test_run_test_suite_environment_variables(self, mock_run, mock_args, temp_output_dir):
+        """Test test suite sets correct environment variables."""
+        mock_args.output_dir = str(temp_output_dir)
+        mock_args.verbose = True
+        mock_args.real_api_keys = False
+        mock_run.return_value = Mock(returncode=0, stderr="")
+
+        # Create mock report
+        report_file = temp_output_dir / "unit_report.json"
+        with open(report_file, 'w') as f:
+            json.dump({"summary": {"passed": 10, "failed": 0, "skipped": 0}}, f)
+
+        runner = E2ETestRunner(mock_args)
+        suite_config = runner.test_suites["unit"]
+
+        result = runner.run_test_suite("unit", suite_config)
+
+        # Verify environment variables were set
+        call_env = mock_run.call_args[1]['env']
+        assert call_env.get("TEST_MODE") == "true"
+        assert call_env.get("LOG_LEVEL") == "DEBUG"
+        assert call_env.get("DEEPGRAM_API_KEY") == "test_deepgram_key_for_mocking"
+        assert call_env.get("ELEVENLABS_API_KEY") == "test_elevenlabs_key_for_mocking"
+
+    @patch('subprocess.run')
+    def test_run_test_suite_real_api_keys(self, mock_run, mock_args, temp_output_dir):
+        """Test test suite with real API keys enabled."""
+        mock_args.output_dir = str(temp_output_dir)
+        mock_args.real_api_keys = True
+        mock_run.return_value = Mock(returncode=0, stderr="")
+
+        # Create mock report
+        report_file = temp_output_dir / "unit_report.json"
+        with open(report_file, 'w') as f:
+            json.dump({"summary": {"passed": 10, "failed": 0, "skipped": 0}}, f)
+
+        runner = E2ETestRunner(mock_args)
+        suite_config = runner.test_suites["unit"]
+
+        result = runner.run_test_suite("unit", suite_config)
+
+        # Verify mock API keys were NOT set
+        call_env = mock_run.call_args[1]['env']
+        # Should use environment's actual keys, not mock ones
+        assert call_env.get("DEEPGRAM_API_KEY") != "test_deepgram_key_for_mocking"
+
 
 # ==================== JSON Report Parsing Tests ====================
 
@@ -584,6 +631,51 @@ class TestRunAllSuites:
         assert result is False
         # Should stop after first critical failure
         assert mock_run_suite.call_count == 1
+
+    @patch.object(E2ETestRunner, 'run_test_suite')
+    def test_run_suites_mixed_critical_noncritical_failures(self, mock_run_suite, runner_with_temp_dir):
+        """Test handling of mixed critical and non-critical suite failures."""
+        # Unit (critical) passes, performance (non-critical) fails, integration (critical) passes
+        mock_run_suite.side_effect = [
+            TestSuiteResult("unit", True, 10.0, 50, 0, 2),
+            TestSuiteResult("integration", True, 15.0, 30, 0, 1),
+            TestSuiteResult("cli", True, 20.0, 15, 0, 0),
+            TestSuiteResult("provider", True, 12.0, 25, 0, 3),
+            TestSuiteResult("performance", False, 30.0, 5, 10, 0),  # Non-critical failure
+            TestSuiteResult("security", True, 18.0, 20, 0, 1)
+        ]
+
+        runner = runner_with_temp_dir
+        result = runner.run_all_suites()
+
+        # Should fail overall due to performance failure
+        assert result is False
+        # But should run all suites since performance is not critical
+        assert len(runner.suite_results) == 6
+
+    @patch.object(E2ETestRunner, 'run_test_suite')
+    def test_run_suites_non_critical_failure_no_fail_fast(self, mock_run_suite, mock_args, temp_output_dir):
+        """Test non-critical failures don't trigger fail-fast."""
+        mock_args.output_dir = str(temp_output_dir)
+        mock_args.fail_fast = True
+
+        # Simulate performance (non-critical) failing, then unit (critical) passing
+        results = []
+        def mock_run_side_effect(suite_name, suite_config):
+            if suite_name == "performance":
+                result = TestSuiteResult("performance", False, 20.0, 5, 10, 0)
+            else:
+                result = TestSuiteResult(suite_name, True, 10.0, 10, 0, 0)
+            results.append(result)
+            return result
+
+        mock_run_suite.side_effect = mock_run_side_effect
+
+        runner = E2ETestRunner(mock_args)
+        runner.run_all_suites()
+
+        # Should continue running after non-critical failure
+        assert len(results) > 1
 
 
 # ==================== Report Generation Tests ====================
@@ -727,6 +819,53 @@ class TestMainRun:
         assert result is False
         mock_cleanup.assert_called_once()
 
+    @patch.object(E2ETestRunner, 'validate_environment')
+    @patch.object(E2ETestRunner, 'run_all_suites')
+    @patch.object(E2ETestRunner, 'cleanup')
+    def test_run_keyboard_interrupt(self, mock_cleanup, mock_run_suites,
+                                   mock_validate, runner_with_temp_dir):
+        """Test run handles KeyboardInterrupt gracefully."""
+        mock_validate.return_value = True
+        mock_run_suites.side_effect = KeyboardInterrupt()
+
+        runner = runner_with_temp_dir
+        result = runner.run()
+
+        assert result is False
+        mock_cleanup.assert_called_once()
+
+    @patch.object(E2ETestRunner, 'validate_environment')
+    @patch.object(E2ETestRunner, 'run_all_suites')
+    @patch.object(E2ETestRunner, 'cleanup')
+    def test_run_unexpected_exception(self, mock_cleanup, mock_run_suites,
+                                     mock_validate, runner_with_temp_dir):
+        """Test run handles unexpected exceptions."""
+        mock_validate.return_value = True
+        mock_run_suites.side_effect = RuntimeError("Unexpected error")
+
+        runner = runner_with_temp_dir
+        result = runner.run()
+
+        assert result is False
+        mock_cleanup.assert_called_once()
+
+    @patch.object(E2ETestRunner, 'validate_environment')
+    @patch.object(E2ETestRunner, 'run_all_suites')
+    @patch.object(E2ETestRunner, 'cleanup')
+    def test_run_verbose_exception_traceback(self, mock_cleanup, mock_run_suites,
+                                            mock_validate, mock_args, temp_output_dir):
+        """Test run shows traceback in verbose mode on exception."""
+        mock_args.output_dir = str(temp_output_dir)
+        mock_args.verbose = True
+        mock_validate.return_value = True
+        mock_run_suites.side_effect = RuntimeError("Test error")
+
+        runner = E2ETestRunner(mock_args)
+        result = runner.run()
+
+        assert result is False
+        # In verbose mode, traceback should be logged (verified by no crash)
+
 
 # ==================== Print Summary Tests ====================
 
@@ -756,6 +895,49 @@ class TestPrintSummary:
         assert "FAILED" in captured.out or "❌" in captured.out
         assert "unit" in captured.out
         assert "integration" in captured.out
+
+    def test_print_summary_zero_tests(self, runner_with_temp_dir, capsys):
+        """Test print_summary handles zero tests gracefully."""
+        runner = runner_with_temp_dir
+
+        report = E2ETestReport(
+            start_time="2025-01-01 10:00:00",
+            end_time="2025-01-01 10:30:00",
+            total_duration=100.0,
+            environment_info={"python_version": "3.10.0"},
+            suite_results=[],
+            overall_success=True
+        )
+
+        runner.print_summary(report)
+
+        captured = capsys.readouterr()
+        assert "E2E TEST EXECUTION SUMMARY" in captured.out
+        assert "0/0" in captured.out or "N/A" in captured.out
+
+    def test_print_summary_all_passed(self, runner_with_temp_dir, capsys):
+        """Test print_summary with all tests passing."""
+        runner = runner_with_temp_dir
+
+        report = E2ETestReport(
+            start_time="2025-01-01 10:00:00",
+            end_time="2025-01-01 10:30:00",
+            total_duration=500.0,
+            environment_info={"python_version": "3.10.0"},
+            suite_results=[
+                TestSuiteResult("unit", True, 10.0, 100, 0, 0),
+                TestSuiteResult("integration", True, 15.0, 50, 0, 0)
+            ],
+            overall_success=True
+        )
+
+        runner.print_summary(report)
+
+        captured = capsys.readouterr()
+        assert "E2E TEST EXECUTION SUMMARY" in captured.out
+        assert "PASSED" in captured.out or "✅" in captured.out
+        assert "150/150" in captured.out  # All tests passed
+        assert "100.0%" in captured.out  # Pass rate should be 100%
 
 
 # ==================== Edge Cases and Error Handling ====================
@@ -794,3 +976,82 @@ class TestEdgeCases:
 
         assert result.success is False
         assert "Unexpected error" in result.error_message
+
+    @patch('subprocess.run')
+    def test_run_test_suite_no_parallel_for_non_unit_integration(self, mock_run, mock_args, temp_output_dir):
+        """Test parallel execution is not applied to non-unit/integration suites."""
+        mock_args.output_dir = str(temp_output_dir)
+        mock_args.parallel = True
+        mock_run.return_value = Mock(returncode=0, stderr="")
+
+        # Create mock report
+        report_file = temp_output_dir / "performance_report.json"
+        with open(report_file, 'w') as f:
+            json.dump({"summary": {"passed": 10, "failed": 0, "skipped": 0}}, f)
+
+        runner = E2ETestRunner(mock_args)
+        suite_config = runner.test_suites["performance"]
+
+        result = runner.run_test_suite("performance", suite_config)
+
+        # Check that parallel arguments were NOT added
+        call_args = mock_run.call_args[0][0]
+        assert "-n" not in call_args
+
+    def test_parse_report_with_error_count(self, runner_with_temp_dir, temp_output_dir):
+        """Test parsing report with error count."""
+        report_data = {
+            "summary": {
+                "passed": 10,
+                "failed": 2,
+                "skipped": 1,
+                "error": 3
+            }
+        }
+
+        report_file = temp_output_dir / "test_report.json"
+        with open(report_file, 'w') as f:
+            json.dump(report_data, f)
+
+        runner = runner_with_temp_dir
+        stats = runner.parse_pytest_json_report(report_file)
+
+        assert stats["passed"] == 10
+        assert stats["failed"] == 2
+        assert stats["skipped"] == 1
+        assert stats["error"] == 3
+
+    def test_report_save_text_format(self, runner_with_temp_dir, temp_output_dir):
+        """Test text report contains detailed information."""
+        runner = runner_with_temp_dir
+
+        report = E2ETestReport(
+            start_time="2025-01-01 10:00:00",
+            end_time="2025-01-01 10:30:00",
+            total_duration=1800.0,
+            environment_info={
+                "python_version": "3.10.0",
+                "platform": "linux",
+                "validation_errors": []
+            },
+            suite_results=[
+                TestSuiteResult("unit", True, 10.0, 50, 0, 2),
+                TestSuiteResult("integration", False, 15.0, 25, 5, 1, error_message="Test failures")
+            ],
+            overall_success=False
+        )
+
+        runner.save_report(report)
+
+        text_file = temp_output_dir / "e2e_test_report.txt"
+        assert text_file.exists()
+
+        with open(text_file, 'r') as f:
+            content = f.read()
+            assert "AUDIO-EXTRACTION-ANALYSIS E2E TEST REPORT" in content
+            assert "python_version: 3.10.0" in content
+            assert "platform: linux" in content
+            assert "unit:" in content
+            assert "integration:" in content
+            assert "Test failures" in content
+            assert "FAILED" in content or "❌" in content
