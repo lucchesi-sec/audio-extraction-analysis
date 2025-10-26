@@ -753,6 +753,148 @@ def process_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
         return 1
 
 
+def _validate_and_setup_paths(args) -> tuple[Path, Path]:
+    """Validate input audio file and setup output directory.
+
+    Args:
+        args: Command line arguments
+
+    Returns:
+        Tuple of (audio_path, output_dir)
+
+    Raises:
+        ValidationError: If audio file validation fails
+    """
+    audio_path = validate_audio_file(args.audio_path)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return audio_path, output_dir
+
+
+def _perform_transcription(audio_path: Path, args) -> Any:
+    """Perform transcription of the audio file.
+
+    Args:
+        audio_path: Path to the audio file
+        args: Command line arguments
+
+    Returns:
+        Transcription result object
+
+    Raises:
+        Exception: If transcription fails
+    """
+    service = TranscriptionService()
+    provider_name = args.provider if args.provider != "auto" else None
+
+    logger.info(f"Transcribing {audio_path} using {args.provider} provider...")
+    result = service.transcribe(audio_path, provider_name=provider_name, language=args.language)
+
+    if not result:
+        raise Exception("Transcription failed")
+
+    return result
+
+
+def _prepare_source_info(audio_path: Path, result: Any) -> dict[str, Any]:
+    """Prepare source information dictionary.
+
+    Args:
+        audio_path: Path to the audio file
+        result: Transcription result object
+
+    Returns:
+        Dictionary containing source information
+    """
+    return {
+        "source": str(audio_path),
+        "processed_at": datetime.now().isoformat(),
+        "provider": result.provider_name,
+        "total_duration": result.duration,
+    }
+
+
+def _save_markdown_transcript(
+    result: Any,
+    source_info: dict[str, Any],
+    base_dir: Path,
+    args,
+) -> Path:
+    """Generate and save markdown transcript.
+
+    Args:
+        result: Transcription result object
+        source_info: Source information dictionary
+        base_dir: Base directory for output files
+        args: Command line arguments
+
+    Returns:
+        Path to the saved markdown file
+    """
+    formatter = MarkdownFormatter()
+    md_path = base_dir / "transcript.md"
+
+    md_content = formatter.format_transcript(
+        result,
+        source_info,
+        md_path,
+        include_timestamps=args.include_timestamps,
+        include_speakers=args.include_speakers,
+        include_confidence=args.include_confidence,
+        template=args.template,
+    )
+
+    formatter.save_transcript(md_content, md_path)
+    logger.info(f"Markdown transcript saved to: {md_path}")
+
+    return md_path
+
+
+def _save_metadata(source_info: dict[str, Any], result: Any, base_dir: Path) -> None:
+    """Save metadata to JSON file.
+
+    Args:
+        source_info: Source information dictionary
+        result: Transcription result object
+        base_dir: Base directory for output files
+    """
+    metadata = {
+        "source": source_info["source"],
+        "processed_at": source_info["processed_at"],
+        "provider": source_info["provider"],
+        "duration_seconds": source_info["total_duration"],
+        "segment_count": len(result.utterances or []),
+    }
+
+    try:
+        safe_write_json(base_dir / "metadata.json", metadata)
+    except (OSError, PermissionError) as e:
+        logger.error(f"Failed writing metadata.json: {e}")
+
+
+def _save_segments(result: Any, base_dir: Path) -> None:
+    """Save segments to JSON file.
+
+    Args:
+        result: Transcription result object
+        base_dir: Base directory for output files
+    """
+    segments = [
+        {
+            "text": getattr(u, "text", None) or getattr(u, "transcript", ""),
+            "start_time": u.start,
+            "end_time": u.end,
+            "speaker": u.speaker,
+        }
+        for u in (result.utterances or [])
+    ]
+
+    try:
+        safe_write_json(base_dir / "segments.json", segments)
+    except (OSError, PermissionError) as e:
+        logger.error(f"Failed writing segments.json: {e}")
+
+
 def export_markdown_command(args, console_manager: Optional[ConsoleManager] = None) -> int:
     """Handle the export-markdown subcommand.
 
@@ -767,85 +909,27 @@ def export_markdown_command(args, console_manager: Optional[ConsoleManager] = No
         Exit code (0 for success, non-zero for failure)
     """
     try:
-        # Validate input audio file
+        # Validate input and setup paths
         try:
-            audio_path = validate_audio_file(args.audio_path)
+            audio_path, output_dir = _validate_and_setup_paths(args)
         except ValidationError:
             return 1
 
-        output_dir = Path(args.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Transcribe
-        service = TranscriptionService()
-        provider_name = args.provider if args.provider != "auto" else None
-
-        logger.info(f"Transcribing {audio_path} using {args.provider} provider...")
-        result = service.transcribe(audio_path, provider_name=provider_name, language=args.language)
-
-        if not result:
-            logger.error("Transcription failed")
-            return 1
+        # Perform transcription
+        result = _perform_transcription(audio_path, args)
 
         # Create output directory structure
         safe_name = sanitize_dirname(audio_path.stem)
         base_dir = ensure_subpath(output_dir, Path(safe_name))
         base_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate markdown
-        formatter = MarkdownFormatter()
-        source_info = {
-            "source": str(audio_path),
-            "processed_at": datetime.now().isoformat(),
-            "provider": result.provider_name,
-            "total_duration": result.duration,
-        }
+        # Prepare source information
+        source_info = _prepare_source_info(audio_path, result)
 
-        # Create formatted transcript
-        md_path = base_dir / "transcript.md"
-        md_content = formatter.format_transcript(
-            result,
-            source_info,
-            md_path,
-            include_timestamps=args.include_timestamps,
-            include_speakers=args.include_speakers,
-            include_confidence=args.include_confidence,
-            template=args.template,
-        )
-
-        # Save transcript
-        formatter.save_transcript(md_content, md_path)
-        logger.info(f"Markdown transcript saved to: {md_path}")
-
-        # Save metadata
-        metadata = {
-            "source": source_info["source"],
-            "processed_at": source_info["processed_at"],
-            "provider": source_info["provider"],
-            "duration_seconds": source_info["total_duration"],
-            "segment_count": len(result.utterances or []),
-        }
-
-        try:
-            safe_write_json(base_dir / "metadata.json", metadata)
-        except (OSError, PermissionError) as e:
-            logger.error(f"Failed writing metadata.json: {e}")
-
-        # Save segments
-        segments = [
-            {
-                "text": getattr(u, "text", None) or getattr(u, "transcript", ""),
-                "start_time": u.start,
-                "end_time": u.end,
-                "speaker": u.speaker,
-            }
-            for u in (result.utterances or [])
-        ]
-
-        try:
-            safe_write_json(base_dir / "segments.json", segments)
-        except (OSError, PermissionError) as e:
-            logger.error(f"Failed writing segments.json: {e}")
+        # Save all output files
+        _save_markdown_transcript(result, source_info, base_dir, args)
+        _save_metadata(source_info, result, base_dir)
+        _save_segments(result, base_dir)
 
         logger.info("Export completed successfully!")
         return 0
