@@ -1,4 +1,19 @@
-"""Concise transcript analyzer that generates a single comprehensive analysis file."""
+"""Concise transcript analyzer that generates a single comprehensive analysis file.
+
+This module provides functionality to analyze transcription results and generate
+a unified markdown report containing multiple analytical sections including:
+- Overview and summary
+- Key topics and themes
+- Speaker analysis and distribution
+- Sentiment analysis
+- Highlights and notable quotes
+- Action items and intents
+- Timeline and segments
+- Technical metadata
+
+The analyzer is designed to produce a human-readable, well-structured analysis
+that consolidates all available transcription data into a single document.
+"""
 from __future__ import annotations
 
 import logging
@@ -10,10 +25,30 @@ logger = logging.getLogger(__name__)
 
 
 class ConciseAnalyzer:
-    """Generates a single, comprehensive analysis file from transcript data."""
+    """Generates a single, comprehensive analysis file from transcript data.
+
+    This analyzer processes TranscriptionResult objects and creates a unified
+    markdown analysis report with multiple sections. The analyzer is stateless
+    and can be reused for multiple transcriptions without side effects.
+
+    The generated report includes:
+    - Header with metadata (provider, duration, file info)
+    - Overview with content statistics
+    - Key topics ranked by frequency
+    - Speaker analysis with time distribution
+    - Sentiment analysis with distribution
+    - Highlights and notable quotes (extracted heuristically)
+    - Action items and intents (detected or inferred)
+    - Timeline from chapters or utterances
+    - Technical metadata
+    """
 
     def __init__(self):
-        """Initialize the concise analyzer."""
+        """Initialize the concise analyzer.
+
+        The analyzer is stateless and requires no configuration. All analysis
+        parameters are determined automatically based on the input data.
+        """
         pass
 
     def analyze_and_save(
@@ -21,13 +56,24 @@ class ConciseAnalyzer:
     ) -> Path:
         """Analyze transcript and save a single comprehensive analysis file.
 
+        Creates the output directory if it doesn't exist, generates a complete
+        markdown analysis from the transcription result, and saves it with the
+        naming pattern: {filename_base}_analysis.md
+
         Args:
-            result: TranscriptionResult with all the rich data from Deepgram
-            output_dir: Directory to save the analysis file
-            filename_base: Base filename (without extension)
+            result: TranscriptionResult containing transcript data and metadata.
+                   May include topics, speakers, sentiment, intents, chapters,
+                   and utterances depending on provider capabilities.
+            output_dir: Directory path where the analysis file will be saved.
+                       Created automatically if it doesn't exist.
+            filename_base: Base filename without extension (e.g., "recording_001").
+                          The output will be saved as {filename_base}_analysis.md
 
         Returns:
-            Path to the generated analysis file
+            Path: Absolute path to the generated analysis markdown file.
+
+        Raises:
+            OSError: If the output directory cannot be created or file cannot be written.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
         analysis_path = output_dir / f"{filename_base}_analysis.md"
@@ -45,11 +91,17 @@ class ConciseAnalyzer:
     def _generate_analysis(self, result: TranscriptionResult) -> str:
         """Generate the complete analysis content.
 
+        Combines all analysis sections into a single markdown document. Each section
+        is generated independently and then joined with double newlines. Empty sections
+        (None values) are filtered out to avoid unnecessary whitespace.
+
         Args:
-            result: TranscriptionResult with rich transcript data
+            result: TranscriptionResult with rich transcript data including optional
+                   fields like topics, speakers, sentiment, chapters, and utterances.
 
         Returns:
-            Complete markdown analysis content
+            str: Complete markdown-formatted analysis content with all non-empty
+                sections joined by double newlines.
         """
         sections = [
             self._generate_header(result),
@@ -66,7 +118,12 @@ class ConciseAnalyzer:
         return "\n\n".join(filter(None, sections))
 
     def _generate_header(self, result: TranscriptionResult) -> str:
-        """Generate the document header."""
+        """Generate the document header with key metadata.
+
+        Returns:
+            str: Markdown-formatted header section with generation time, provider,
+                duration, and audio filename.
+        """
         duration_formatted = self._format_duration(result.duration)
 
         return f"""# Audio Analysis Report
@@ -79,7 +136,15 @@ class ConciseAnalyzer:
 ---"""
 
     def _generate_overview(self, result: TranscriptionResult) -> str:
-        """Generate overview section."""
+        """Generate overview section with content statistics and summary.
+
+        If a summary is available in the result, it's used directly. Otherwise,
+        a fallback summary is generated from the first 3 sentences or first 300
+        characters of the transcript.
+
+        Returns:
+            str: Markdown-formatted overview with character/word counts and summary.
+        """
         word_count = len(result.transcript.split())
 
         overview = f"""## 📋 Overview
@@ -101,7 +166,15 @@ class ConciseAnalyzer:
         return overview
 
     def _generate_key_topics(self, result: TranscriptionResult) -> str:
-        """Generate key topics section."""
+        """Generate key topics section ranked by frequency.
+
+        Topics are sorted by mention count in descending order, with the top 10
+        most frequent topics displayed. Topic names are title-cased for readability.
+
+        Returns:
+            str: Markdown-formatted section with numbered topic list, or a message
+                if no topics are available.
+        """
         if not result.topics:
             return "## 🎯 Key Topics\n\n*No specific topics identified*"
 
@@ -116,7 +189,15 @@ class ConciseAnalyzer:
         return content
 
     def _generate_speaker_insights(self, result: TranscriptionResult) -> str:
-        """Generate speaker insights section."""
+        """Generate speaker insights section with time distribution.
+
+        For each detected speaker, calculates and displays their total speaking time
+        and percentage of total audio duration. Speakers are identified by numeric ID.
+
+        Returns:
+            str: Markdown-formatted section with speaker statistics, or a message
+                if speaker diarization data is unavailable.
+        """
         if not result.speakers:
             return "## 👥 Speaker Analysis\n\n*No speaker diarization data available*"
 
@@ -131,7 +212,16 @@ class ConciseAnalyzer:
         return content
 
     def _generate_sentiment_analysis(self, result: TranscriptionResult) -> str:
-        """Generate sentiment analysis section."""
+        """Generate sentiment analysis section with distribution breakdown.
+
+        Displays the distribution of sentiment across transcript segments, showing
+        count and percentage for each sentiment category (positive, negative, neutral).
+        Each sentiment is accompanied by a corresponding emoji for visual clarity.
+
+        Returns:
+            str: Markdown-formatted section with sentiment distribution and emojis,
+                or a message if sentiment analysis data is unavailable.
+        """
         if not result.sentiment_distribution:
             return "## 😊 Sentiment Analysis\n\n*No sentiment analysis data available*"
 
@@ -146,7 +236,20 @@ class ConciseAnalyzer:
         return content
 
     def _generate_highlights_and_quotes(self, result: TranscriptionResult) -> str:
-        """Generate highlights and notable quotes section."""
+        """Generate highlights and notable quotes section.
+
+        Uses a heuristic approach to identify meaningful content:
+        - Extracts sentences with 15+ words (substantial content)
+        - Filters sentences under 200 characters (avoids run-ons)
+        - Selects top 5 longest sentences as likely highlights
+
+        This simple length-based heuristic tends to surface sentences with more
+        detailed or important information.
+
+        Returns:
+            str: Markdown-formatted section with top 5 extracted quotes, or a
+                message if no suitable highlights are found.
+        """
         content = "## 💡 Key Highlights & Quotes\n\n"
 
         # Extract meaningful sentences (longer sentences often contain more substance)
