@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Refactor large functions in audio_pipeline.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/pipeline/audio_pipeline.py**\nIssue Type: long_function\nSeverity: medium\nLine: 58\n\n**Description:** Function 'process_video' is 108 lines long\n**Suggested Action:** Consider breaking down process_video into smaller functions",
+  "title": "Refactor large functions in backends.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/cache/backends.py**\nIssue Type: long_function\nSeverity: medium\nLine: 216\n\n**Description:** Function 'get' is 61 lines long\n**Suggested Action:** Consider breaking down get into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "dee1e122-4dcf-44ac-86fa-6556e6ac34e3",
+    "work_item_id": "20c4e7e3-1d58-4d87-a796-ff4039ad8150",
     "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
@@ -17,15 +17,15 @@
       "quality_issue": {
         "type": "long_function",
         "severity": "medium",
-        "line": 58,
-        "description": "Function 'process_video' is 108 lines long",
-        "suggestion": "Consider breaking down process_video into smaller functions"
+        "line": 216,
+        "description": "Function 'get' is 61 lines long",
+        "suggestion": "Consider breaking down get into smaller functions"
       },
-      "discovered_at": "2025-10-26T17:12:22.535921",
+      "discovered_at": "2025-10-26T17:12:22.550196",
       "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T18:22:54.972752",
+  "timestamp": "2025-10-26T18:24:14.245987",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
