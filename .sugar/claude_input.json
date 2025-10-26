@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Code review and optimization for transcription.py",
-  "description": "Review ./src/models/transcription.py for potential improvements: code clarity, performance, error handling, and best practices.",
+  "title": "Code review and optimization for export_markdown_command.py",
+  "description": "Review ./src/commands/export_markdown_command.py for potential improvements: code clarity, performance, error handling, and best practices.",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "88346984-129e-447d-9bb4-16bf694433eb",
+    "work_item_id": "6fd75af8-b9b4-43bd-a387-32c2965efd5d",
     "source_type": "maintenance_generator",
     "priority": 2,
     "attempts": 1,
@@ -16,11 +16,11 @@
     "session_context": {
       "maintenance_task": true,
       "task_type": "refactor",
-      "discovered_at": "2025-10-26T17:01:21.180663",
+      "discovered_at": "2025-10-26T17:02:38.657929",
       "source_type": "maintenance"
     }
   },
-  "timestamp": "2025-10-26T19:14:10.260257",
+  "timestamp": "2025-10-26T19:16:24.256594",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
