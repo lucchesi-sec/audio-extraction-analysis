@@ -96,21 +96,21 @@ class TranscriptionProviderFactory:
         if circuit_config is not None and retry_config is not None:
             return circuit_config, retry_config
 
-        config_dict = Config.get_provider_config(provider_name)
+        config = Config()
 
         if circuit_config is None:
             circuit_config = CircuitBreakerConfig(
-                failure_threshold=config_dict.get("circuit_breaker_failure_threshold", 5),
-                recovery_timeout=config_dict.get("circuit_breaker_recovery_timeout", 60.0),
+                failure_threshold=config.circuit_breaker_failure_threshold,
+                recovery_timeout=config.circuit_breaker_recovery_timeout,
             )
 
         if retry_config is None:
             retry_config = RetryConfig(
-                max_attempts=config_dict.get("max_retries", 3),
-                base_delay=config_dict.get("retry_delay", 1.0),
-                max_delay=config_dict.get("max_retry_delay", 60.0),
-                exponential_base=config_dict.get("retry_exponential_base", 2.0),
-                jitter=config_dict.get("retry_jitter_enabled", True),
+                max_attempts=config.max_retries,
+                base_delay=config.retry_delay,
+                max_delay=config.max_retry_delay,
+                exponential_base=config.retry_exponential_base,
+                jitter=config.retry_jitter,
             )
 
         return circuit_config, retry_config
