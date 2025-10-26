@@ -535,6 +535,127 @@ def transcribe_command(args: argparse.Namespace, console_manager: Optional[Conso
         return 1
 
 
+def _parse_quality_preset(quality_str: str) -> AudioQuality:
+    """Parse quality preset string to AudioQuality enum.
+
+    Args:
+        quality_str: Quality preset string (high, standard, speech, compressed)
+
+    Returns:
+        AudioQuality enum value
+    """
+    quality_map = {
+        "high": AudioQuality.HIGH,
+        "standard": AudioQuality.STANDARD,
+        "speech": AudioQuality.SPEECH,
+        "compressed": AudioQuality.COMPRESSED,
+    }
+    return quality_map.get(quality_str, AudioQuality.SPEECH)
+
+
+def _setup_process_output_dir(args: argparse.Namespace) -> Path:
+    """Setup and create output directory for processing.
+
+    Args:
+        args: Command line arguments
+
+    Returns:
+        Path to output directory
+    """
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        output_dir = Path("output")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def _execute_processing_pipeline(
+    input_path: Path,
+    output_dir: Path,
+    quality: AudioQuality,
+    args: argparse.Namespace,
+    console_manager: Optional[ConsoleManager],
+) -> tuple[dict[str, Any], Any]:
+    """Execute the audio processing pipeline.
+
+    Args:
+        input_path: Input video file path
+        output_dir: Output directory for results
+        quality: Audio quality preset
+        args: Command line arguments
+        console_manager: Optional console manager for rich output
+
+    Returns:
+        Tuple of (pipeline_result dict, transcription result or None)
+
+    Raises:
+        Exception: If pipeline execution fails
+    """
+    pipeline_result = asyncio.run(
+        process_pipeline(
+            input_path=str(input_path),
+            output_dir=str(output_dir),
+            quality=quality,
+            language=args.language,
+            provider=args.provider,
+            analysis_style=args.analysis_style,
+            console_manager=console_manager,
+        )
+    )
+
+    # Extract the transcription result from pipeline results
+    if pipeline_result.get("success", False):
+        result = pipeline_result.get("transcript")
+    else:
+        result = None
+
+    if not pipeline_result.get("success", False):
+        errors = pipeline_result.get("errors", ["Unknown error"])
+        logger.error(f"Pipeline processing failed: {', '.join(errors)}")
+        # Targeted diagnostics: dump stage results and context
+        import os
+
+        if os.getenv("AUDIO_PIPELINE_DEBUG", "").lower() in {"1", "true", "yes"}:
+            diag = {
+                "stage_results": pipeline_result.get("stage_results"),
+                "stages_completed": pipeline_result.get("stages_completed"),
+                "files_created": pipeline_result.get("files_created"),
+                "audio_path": pipeline_result.get("audio_path"),
+            }
+            try:
+                logger.error("Pipeline diagnostics: %s", json.dumps(diag, default=str))
+            except Exception:
+                logger.error(f"Pipeline diagnostics (raw): {diag}")
+
+    return pipeline_result, result
+
+
+def _handle_process_success(
+    result: Any,
+    output_dir: Path,
+    args: argparse.Namespace,
+    input_path: Path,
+) -> None:
+    """Handle successful processing result.
+
+    Args:
+        result: Transcription result
+        output_dir: Output directory path
+        args: Command line arguments
+        input_path: Input file path
+    """
+    logger.info("Processing completed successfully!")
+    logger.info(f"Results saved to: {output_dir}")
+
+    # Optional Markdown export
+    if getattr(args, "export_markdown", False):
+        # Update args to use output_dir for markdown output
+        args.markdown_output_dir = str(output_dir)
+        export_markdown_transcript(args, input_path, result)
+
+
 def process_command(args: argparse.Namespace, console_manager: Optional[ConsoleManager] = None) -> int:
     """Handle the process subcommand (extract + transcribe).
 
@@ -546,83 +667,34 @@ def process_command(args: argparse.Namespace, console_manager: Optional[ConsoleM
         Exit code (0 for success, non-zero for failure)
     """
     try:
+        # Validate input file
         input_path = Path(args.video_file)
         if not input_path.exists():
             logger.error(f"Video file not found: {input_path}")
             return 1
 
         # Setup output directory
-        if args.output_dir:
-            output_dir = Path(args.output_dir)
-        else:
-            output_dir = Path("output")
-
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = _setup_process_output_dir(args)
 
         # Parse quality preset
-        quality_map = {
-            "high": AudioQuality.HIGH,
-            "standard": AudioQuality.STANDARD,
-            "speech": AudioQuality.SPEECH,
-            "compressed": AudioQuality.COMPRESSED,
-        }
-
-        quality = quality_map.get(args.quality, AudioQuality.SPEECH)
+        quality = _parse_quality_preset(args.quality)
 
         logger.info(
             f"Processing video {input_path} (quality: {quality.value}, provider: {args.provider})"
         )
 
-        # Use simplified linear pipeline
+        # Execute pipeline
         try:
-            pipeline_result = asyncio.run(
-                process_pipeline(
-                    input_path=str(input_path),
-                    output_dir=str(output_dir),
-                    quality=quality,
-                    language=args.language,
-                    provider=args.provider,
-                    analysis_style=args.analysis_style,
-                    console_manager=console_manager,
-                )
+            pipeline_result, result = _execute_processing_pipeline(
+                input_path, output_dir, quality, args, console_manager
             )
-
-            # Extract the transcription result from pipeline results
-            if pipeline_result.get("success", False):
-                result = pipeline_result.get("transcript")
-            else:
-                result = None
-
-            if not pipeline_result.get("success", False):
-                errors = pipeline_result.get("errors", ["Unknown error"])
-                logger.error(f"Pipeline processing failed: {', '.join(errors)}")
-                # Targeted diagnostics: dump stage results and context
-                import os
-                if os.getenv("AUDIO_PIPELINE_DEBUG", "").lower() in {"1", "true", "yes"}:
-                    diag = {
-                        "stage_results": pipeline_result.get("stage_results"),
-                        "stages_completed": pipeline_result.get("stages_completed"),
-                        "files_created": pipeline_result.get("files_created"),
-                        "audio_path": pipeline_result.get("audio_path"),
-                    }
-                    try:
-                        logger.error("Pipeline diagnostics: %s", json.dumps(diag, default=str))
-                    except Exception:
-                        logger.error(f"Pipeline diagnostics (raw): {diag}")
         except Exception as e:
             logger.error(f"Process command failed during pipeline: {e}")
             return 1
 
+        # Handle results
         if result:
-            logger.info("Processing completed successfully!")
-            logger.info(f"Results saved to: {output_dir}")
-
-            # Optional Markdown export
-            if getattr(args, "export_markdown", False):
-                # Update args to use output_dir for markdown output
-                args.markdown_output_dir = str(output_dir)
-                export_markdown_transcript(args, input_path, result)
-
+            _handle_process_success(result, output_dir, args, input_path)
             return 0
         else:
             logger.error("Processing failed")

@@ -1,12 +1,12 @@
 {
   "task_type": "refactor",
-  "title": "Refactor large functions in retry.py",
-  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/utils/retry.py**\nIssue Type: long_function\nSeverity: medium\nLine: 155\n\n**Description:** Function 'retry_sync' is 91 lines long\n**Suggested Action:** Consider breaking down retry_sync into smaller functions",
+  "title": "Refactor large functions in process_command.py",
+  "description": "**Code Quality Issue in /home/enzo/audio-extraction-analysis/src/commands/process_command.py**\nIssue Type: long_function\nSeverity: medium\nLine: 19\n\n**Description:** Function 'process_command' is 110 lines long\n**Suggested Action:** Consider breaking down process_command into smaller functions",
   "execution_mode": "ExecutionMode.AGENT",
   "agent_type": "AgentType.CODE_REVIEWER",
   "agent_fallback": true,
   "context": {
-    "work_item_id": "521eccb2-5ef1-4954-ae0e-41e197a0c567",
+    "work_item_id": "7043cb08-fc33-40ef-9142-dc9fb7cacbf7",
     "source_type": "code_quality",
     "priority": 3,
     "attempts": 1,
@@ -17,15 +17,15 @@
       "quality_issue": {
         "type": "long_function",
         "severity": "medium",
-        "line": 155,
-        "description": "Function 'retry_sync' is 91 lines long",
-        "suggestion": "Consider breaking down retry_sync into smaller functions"
+        "line": 19,
+        "description": "Function 'process_command' is 110 lines long",
+        "suggestion": "Consider breaking down process_command into smaller functions"
       },
-      "discovered_at": "2025-10-26T16:49:45.662325",
+      "discovered_at": "2025-10-26T16:49:45.666192",
       "source_type": "code_quality"
     }
   },
-  "timestamp": "2025-10-26T17:56:31.941374",
+  "timestamp": "2025-10-26T17:59:16.876138",
   "sugar_version": "2.1.0",
   "continue_session": false,
   "timeout_seconds": 1800,
