@@ -35,11 +35,15 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.10.0",
+    "pytest-timeout>=2.1.0",
     "black>=23.0.0",
     "ruff>=0.4.0",
     "pre-commit>=3.0.0",
     "bandit>=1.7.6",
     "pip-audit>=2.4.14",
+    "detect-secrets>=1.4.0",
+    "import-linter>=2.0",
+    "responses>=0.24.0",
 ]
 
 parakeet = [

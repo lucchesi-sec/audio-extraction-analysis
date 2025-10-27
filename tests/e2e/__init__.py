@@ -9,7 +9,7 @@ This module provides comprehensive E2E testing capabilities including:
 - Test data management
 """
 
-from tests.e2e.base import (
+from .base import (
     E2ETestBase,
     CLITestMixin,
     MockProviderMixin,

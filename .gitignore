@@ -159,3 +159,6 @@ reports/static/
 # Temporary files
 *.tmp
 *.temp
+
+# AI assistant configuration and specs
+.claude/

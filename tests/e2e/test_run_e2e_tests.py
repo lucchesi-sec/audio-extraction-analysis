@@ -21,7 +21,7 @@ import time
 import sys
 
 # Import the module to test
-from tests.e2e.run_e2e_tests import (
+from .run_e2e_tests import (
     E2ETestRunner,
     TestSuiteResult,
     E2ETestReport

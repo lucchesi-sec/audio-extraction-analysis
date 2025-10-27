@@ -24,7 +24,7 @@ import logging
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from tests.e2e.test_data_manager import TestDataManager
+from .test_data_manager import TestDataManager
 
 
 @dataclass

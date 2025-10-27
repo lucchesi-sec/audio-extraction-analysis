@@ -30,7 +30,12 @@ class AudioExtractor:
     """FFmpeg-based audio extraction service."""
 
     # Security: Define allowed file extensions and maximum file size
-    ALLOWED_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".3gp"}
+    ALLOWED_EXTENSIONS = {
+        # Video formats
+        ".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".3gp",
+        # Audio formats
+        ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma", ".opus"
+    }
     MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2GB limit
 
     def __init__(self):
@@ -97,31 +102,28 @@ class AudioExtractor:
             raise RuntimeError("FFmpeg version check timed out") from e
 
     def get_video_info(self, input_path: Path) -> Dict[str, Any]:
-        """Get video file information."""
+        """Get video/audio file information using ffprobe."""
         try:
             # Security: Validate input path
             self._validate_path(input_path)
 
+            # Use ffprobe to extract media information
             cmd = [
-                "ffmpeg",
-                "-i",
-                str(input_path),
-                "-f",
-                "null",
-                "-",
-                "-v",
-                "quiet",
-                "-print_format",
-                "json",
-                "-show_format",
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(input_path)
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=True)
 
-            # Extract duration from stderr (FFmpeg logs to stderr)
-            duration_line = [line for line in result.stderr.split("\n") if "Duration:" in line]
+            # Parse duration from ffprobe output
             duration = None
-            if duration_line:
-                duration = duration_line[0].split("Duration: ")[1].split(",")[0]
+            if result.stdout.strip():
+                try:
+                    duration = float(result.stdout.strip())
+                except ValueError:
+                    logger.warning(f"Could not parse duration: {result.stdout}")
 
             file_size = input_path.stat().st_size
 
